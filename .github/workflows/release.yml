@@ -20,6 +20,11 @@ jobs:
       - run: npm ci
       - name: Build
         run: npm run build
+      - name: Package zip for manual install
+        run: |
+          mkdir -p dist/obsidian-optical-zoom
+          cp main.js manifest.json styles.css dist/obsidian-optical-zoom/
+          cd dist && zip -r ../obsidian-optical-zoom.zip obsidian-optical-zoom
       - name: Create release with plugin assets
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -28,5 +33,5 @@ jobs:
           gh release create "$tag" \
             --title "$tag" \
             --generate-notes \
-            main.js manifest.json styles.css \
-          || gh release upload "$tag" main.js manifest.json styles.css --clobber
+            main.js manifest.json styles.css obsidian-optical-zoom.zip \
+          || gh release upload "$tag" main.js manifest.json styles.css obsidian-optical-zoom.zip --clobber
