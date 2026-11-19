@@ -23,8 +23,13 @@ export default class OpticalZoomPlugin extends Plugin {
       this.getActiveController()?.resetZoom(true);
     });
 
-    // Global Optical Loupe Controller
-    this.loupeController = new OpticalLoupeController(() => this.settings);
+    // Global Optical Loupe Controller. It receives the active pane's
+    // optical scale so it can refuse to activate while zoomed (a held
+    // finger on a zoomed pane is a pan, not a loupe request).
+    this.loupeController = new OpticalLoupeController(
+      () => this.settings,
+      () => this.getActiveController()?.getScale() ?? 1.0
+    );
 
     // Attach controllers to existing and future Markdown leaves
     this.app.workspace.onLayoutReady(() => {

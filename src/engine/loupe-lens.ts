@@ -1,5 +1,6 @@
 // src/engine/loupe-lens.ts
-import { IS_MOBILE, MOBILE_LONG_PRESS_MS, MOBILE_LOUPE_Y_OFFSET_PX } from '../constants';
+import { IS_MOBILE, MOBILE_LONG_PRESS_MS, MOBILE_LOUPE_Y_OFFSET_PX, TOUCH_CLAIM_THRESHOLD_PX } from '../constants';
+import { shouldShield } from '../input/gesture-guards';
 import type { OpticalZoomSettings } from '../types';
 
 export class OpticalLoupeController {
@@ -10,11 +11,25 @@ export class OpticalLoupeController {
   private lastPointerX = 0;
   private lastPointerY = 0;
   private sourceRect: DOMRect | null = null;
+  private sourceScrollTop = 0;
+  private sourceScrollLeft = 0;
   private longPressTimer: number | null = null;
   private activeTouchId: number | null = null;
 
-  constructor(private readonly getSettings: () => OpticalZoomSettings) {
+  constructor(
+    private readonly getSettings: () => OpticalZoomSettings,
+    private readonly getActiveScale: () => number = () => 1.0
+  ) {
     this.bindGlobalListeners();
+  }
+
+  /**
+   * The loupe never activates while the active pane is optically zoomed:
+   * a still finger on a zoomed pane is a pan about to happen, and a loupe
+   * over already-magnified content is pointless.
+   */
+  private isZoomed(): boolean {
+    return shouldShield(this.getActiveScale());
   }
 
   private bindGlobalListeners(): void {
@@ -67,6 +82,13 @@ export class OpticalLoupeController {
     const settings = this.getSettings();
     if (!this.isLoupeEnabled() || !settings.mobileTouchLoupe) return;
 
+    // While zoomed, holding a finger still is the start of a pan, not a
+    // loupe request — never even schedule the long-press.
+    if (this.isZoomed()) {
+      this.clearLongPressTimer();
+      return;
+    }
+
     if (e.touches.length !== 1) {
       this.clearLongPressTimer();
       if (this.isActive) this.deactivateLoupe();
@@ -92,8 +114,8 @@ export class OpticalLoupeController {
     const touch = e.touches[0];
     const movedDist = Math.hypot(touch.clientX - this.lastPointerX, touch.clientY - this.lastPointerY);
 
-    if (!this.isActive && movedDist > 10) {
-      // User is scrolling normally with 1 finger; cancel loupe activation
+    if (!this.isActive && movedDist > TOUCH_CLAIM_THRESHOLD_PX) {
+      // User is scrolling or panning with 1 finger; cancel loupe activation
       this.clearLongPressTimer();
       return;
     }
@@ -122,12 +144,23 @@ export class OpticalLoupeController {
   }
 
   public activateLoupe(clientX: number, clientY: number, isTouchOffset: boolean): void {
+    // Single-instance guard: any previous lens (active or orphaned) is
+    // removed first, so there can never be two lens elements in the DOM.
+    this.deactivateLoupe();
+
+    // Never activate while the active pane is zoomed. This is also the
+    // long-press timer's fire-time check: if a pinch zoom intervened
+    // while the timer was pending, the activation is refused here.
+    if (this.isZoomed()) return;
+
     const targetPane = document.elementFromPoint(clientX, clientY)?.closest<HTMLElement>(
       '.markdown-preview-view, .cm-scroller'
     );
     if (!targetPane) return;
 
     this.sourceRect = targetPane.getBoundingClientRect();
+    this.sourceScrollTop = targetPane.scrollTop;
+    this.sourceScrollLeft = targetPane.scrollLeft;
     const settings = this.getSettings();
     const size = settings.loupeSizePx;
 
@@ -143,8 +176,15 @@ export class OpticalLoupeController {
     clonedPane.style.width = `${this.sourceRect.width}px`;
     clonedPane.style.height = `${this.sourceRect.height}px`;
     clonedPane.style.overflow = 'hidden';
-    clonedPane.scrollTop = targetPane.scrollTop;
-    clonedPane.scrollLeft = targetPane.scrollLeft;
+
+    // Neutralize any optical-zoom transform carried by the cloned inner
+    // sizer — the loupe magnifies the clean content with its own scale.
+    clonedPane
+      .querySelectorAll<HTMLElement>('.cm-sizer, .markdown-preview-sizer')
+      .forEach((sizer) => {
+        sizer.style.transform = '';
+        sizer.style.transformOrigin = '';
+      });
 
     // Copy any canvas bitmaps (e.g., Excalidraw/charts) once on activation
     const origCanvases = targetPane.querySelectorAll('canvas');
@@ -161,6 +201,13 @@ export class OpticalLoupeController {
     this.lensEl.appendChild(this.cloneViewportEl);
     document.body.appendChild(this.lensEl);
 
+    // Apply the captured scroll position only AFTER the clone is attached:
+    // scroll assignments on a detached node are dropped (no layout), which
+    // left the lens showing the empty region above CodeMirror's rendered
+    // lines — a blank white box. It is re-applied on the first rAF too.
+    clonedPane.scrollTop = this.sourceScrollTop;
+    clonedPane.scrollLeft = this.sourceScrollLeft;
+
     this.isActive = true;
     this.scheduleLensPositionUpdate(clientX, clientY, isTouchOffset);
   }
@@ -170,6 +217,12 @@ export class OpticalLoupeController {
     this.rafId = window.requestAnimationFrame(() => {
       this.rafId = null;
       if (!this.isActive || !this.lensEl || !this.cloneViewportEl || !this.sourceRect) return;
+
+      // Re-apply the captured scroll position inside the frame as well:
+      // if the first post-append assignment raced layout, this guarantees
+      // the clone is scrolled to the same lines as the source pane.
+      this.cloneViewportEl.scrollTop = this.sourceScrollTop;
+      this.cloneViewportEl.scrollLeft = this.sourceScrollLeft;
 
       const settings = this.getSettings();
       const size = settings.loupeSizePx;
@@ -199,9 +252,14 @@ export class OpticalLoupeController {
       this.rafId = null;
     }
     this.lensEl?.remove();
+    // Sweep any stray lens elements too — an orphaned lens must never
+    // survive in the DOM, whatever path created it.
+    document.querySelectorAll('.oz-loupe-lens').forEach((el) => el.remove());
     this.lensEl = null;
     this.cloneViewportEl = null;
     this.sourceRect = null;
+    this.sourceScrollTop = 0;
+    this.sourceScrollLeft = 0;
     this.isActive = false;
   };
 
