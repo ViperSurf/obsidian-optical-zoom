@@ -15,7 +15,7 @@ Works on **Windows, Linux, macOS, Android, and iOS/iPadOS** (`isDesktopOnly: fal
 
 - **Pinch-to-zoom around the focal point** — the exact character, formula, or pixel under your fingers/cursor stays put while everything scales around it (focal-point affine math, verified by unit tests).
 - **Hold-to-loupe magnifier** — a snapshot lens magnifies one spot (1.5× / 2.0× / 2.5×) while the rest of the note stays at 100%. The snapshot is taken once when the lens opens; moving it is transform-only, so it stays smooth at 60/120 fps and canvas content (Excalidraw, charts) is copied across.
-- **Free panning while zoomed** — drag the zoomed page around with one finger (horizontal drags pan, vertical drags keep scrolling natively) or two fingers. Pinch and pan touch gestures are shielded at the note container, so they never trigger Obsidian's side drawers.
+- **Free panning while zoomed** — drag the zoomed page around with one finger (horizontal drags pan, vertical drags keep scrolling natively) or two fingers. While zoomed, touch gestures are shielded at the note container from the very first pixel — including drags that start at the screen edges — so they never trigger Obsidian's side drawers.
 - **Per-pane isolation** — every open note gets its own zoom controller (`WeakMap<WorkspaceLeaf, PaneZoomController>`), so pinching in one split never affects another, and controllers are cleaned up when tabs close.
 - **Inner-sizer-only transforms** — only `.cm-sizer` (editor) and `.markdown-preview-sizer` (Reading view) are transformed. Scroll containers are never scaled, so scrollbars, wheel scrolling, and 1-finger scrolling keep working natively.
 - **Magnetic snap & rubber band** — zooming out past 100% rubber-bands to a 0.92 floor during the gesture, and releasing anywhere in 96%–104% snaps cleanly back to exactly 100%.
@@ -51,7 +51,7 @@ You can also install and auto-update via the [BRAT](https://github.com/TfTHacker
 | Pinch zoom (trackpad) | Trackpad pinch, or `Ctrl`/`Cmd` + mouse wheel over the note |
 | Pan while zoomed | Drag with one finger (horizontal drags move the page; vertical drags still scroll natively), drag with two fingers, or scroll — pan is clamped against the real content size so every edge of a long note stays reachable and the note can't get lost off-screen |
 | Loupe (desktop) | Hold `Alt` (configurable: `Ctrl`, `Shift`, or disabled) and move the mouse — no click needed |
-| Loupe (mobile) | Long-press (~320 ms) with one finger and drag; the lens floats 76 px above your thumb so it never covers what you're reading |
+| Loupe (mobile) | Long-press (500 ms) with one finger **at 100% zoom** and drag; the lens floats 76 px above your thumb so it never covers what you're reading. While zoomed in, a held finger pans the page instead — the loupe never opens over already-magnified content |
 | Reset to 100% | `Ctrl`/`Cmd` + `0`, click the zoom pill, or two-finger double-tap |
 | Zoom in / out (commands) | `Ctrl`/`Cmd` + `Shift` + `=` (+25%) / `Ctrl`/`Cmd` + `Shift` + `-` (−20%), or use the command palette |
 
@@ -101,11 +101,11 @@ npm run typecheck
 npm test        # unit tests for the focal-point affine math (node:test)
 ```
 
-The test suite bundles the real `src/math/affine-focal.ts` with esbuild (aliasing the types-only `obsidian` package to a small stub) and verifies: focal-point invariance within 0.01 px across 1.0× → 3.0× → 1.0×, magnetic snap inside [0.96, 1.04] only, the 0.92 rubber-band floor, max-scale clamping, pan clamping (including `tx = ty = 0` at scale ≤ 1), focal anchoring through the production client-to-focal conversion on scrolled notes (scroll offsets 0 / −800 / −1500 / −3000, with centered-column margins), and pan reach for long notes at 2× and 3×.
+The test suite bundles the real `src/math/affine-focal.ts` and `src/input/gesture-guards.ts` with esbuild (aliasing the types-only `obsidian` package to a small stub) and verifies: focal-point invariance within 0.01 px across 1.0× → 3.0× → 1.0×, magnetic snap inside [0.96, 1.04] only, the 0.92 rubber-band floor, max-scale clamping, pan clamping (including `tx = ty = 0` at scale ≤ 1), focal anchoring through the production client-to-focal conversion on scrolled notes (scroll offsets 0 / −800 / −1500 / −3000, with centered-column margins), pan reach for long notes at 2× and 3×, and the drawer-shield decisions (the > 1.005 zoom gate, and edge-start zones at both container edges).
 
 ### Releasing
 
-Tag a version (e.g. `git tag v1.1.0 && git push origin v1.1.0`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required loose by the Obsidian community store / BRAT) plus `obsidian-optical-zoom.zip`, a ready-to-unzip folder for manual installs.
+Tag a version (e.g. `git tag v1.1.1 && git push origin v1.1.1`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required loose by the Obsidian community store / BRAT) plus `obsidian-optical-zoom.zip`, a ready-to-unzip folder for manual installs.
 
 ## License
 
