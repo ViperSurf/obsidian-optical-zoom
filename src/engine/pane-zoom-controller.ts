@@ -1,7 +1,12 @@
 // src/engine/pane-zoom-controller.ts
 import type { WorkspaceLeaf } from 'obsidian';
 import { SETTLE_DEBOUNCE_MS } from '../constants';
-import { computeFocalZoomTransform, applyMagneticSnap } from '../math/affine-focal';
+import {
+  computeFocalZoomTransform,
+  applyMagneticSnap,
+  focalPointFromClient,
+  type PanBounds,
+} from '../math/affine-focal';
 import { CrossPlatformInputRecognizer } from '../input/input-recognizer';
 import type { AffineTransformState, OpticalZoomSettings, PinchGestureFrame } from '../types';
 
@@ -62,14 +67,46 @@ export class PaneZoomController {
     return null;
   }
 
+  /**
+   * Builds the pan-clamp geometry for the current DOM state: the target's
+   * untransformed content size (offsetWidth/Height ignore CSS transforms)
+   * and where its untransformed origin sits relative to the viewport.
+   */
+  private resolvePanBounds(
+    viewport: HTMLElement,
+    target: HTMLElement,
+    targetRect: DOMRect
+  ): PanBounds {
+    const viewportRect = viewport.getBoundingClientRect();
+    return {
+      viewportWidth: viewportRect.width,
+      viewportHeight: viewportRect.height,
+      contentWidth: target.offsetWidth,
+      contentHeight: target.offsetHeight,
+      originOffsetX: targetRect.left - this.state.tx - viewportRect.left,
+      originOffsetY: targetRect.top - this.state.ty - viewportRect.top,
+    };
+  }
+
   private handlePinchFrame(frame: PinchGestureFrame): void {
     const dom = this.resolveDomTargets();
     if (!dom) return;
 
-    const rect = dom.viewport.getBoundingClientRect();
-    // Compute focal coordinate relative to the target's untransformed origin
-    const focalX = frame.focalClientX - rect.left;
-    const focalY = frame.focalClientY - rect.top;
+    // The affine formula anchors at the focal point measured from the
+    // target's *untransformed* origin. The transformed target's rect already
+    // includes the current translation, so focalPointFromClient backs it
+    // out. (Measuring from the viewport instead is off by the scroll offset
+    // and the centered-column margin, which made zoom slide vertically and
+    // horizontally away from the pinch spot.)
+    const targetRect = dom.target.getBoundingClientRect();
+    const { focalX, focalY } = focalPointFromClient(
+      frame.focalClientX,
+      frame.focalClientY,
+      targetRect.left,
+      targetRect.top,
+      this.state.tx,
+      this.state.ty
+    );
 
     const settings = this.getSettings();
     this.state = computeFocalZoomTransform(
@@ -81,8 +118,7 @@ export class PaneZoomController {
       frame.panDeltaY,
       settings.minZoomScale,
       settings.maxZoomScale,
-      rect.width,
-      rect.height
+      this.resolvePanBounds(dom.viewport, dom.target, targetRect)
     );
 
     dom.target.classList.add('oz-gesturing');
