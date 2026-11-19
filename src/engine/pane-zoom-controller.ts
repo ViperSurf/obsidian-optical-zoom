@@ -68,9 +68,20 @@ export class PaneZoomController {
   }
 
   /**
-   * Builds the pan-clamp geometry for the current DOM state: the target's
-   * untransformed content size (offsetWidth/Height ignore CSS transforms)
-   * and where its untransformed origin sits relative to the viewport.
+   * Builds the pan-clamp geometry for the current DOM state.
+   *
+   * Content size comes from the VIEWPORT scroller's scrollWidth /
+   * scrollHeight: by definition the full unscaled extent of the note —
+   * the same measure that makes native scrolling reach the whole note.
+   * The transformed sizer's offsetWidth/offsetHeight are NOT a
+   * trustworthy substitute in CM6 / Reading layouts (the resolved target
+   * can be a virtualized chunk whose layout size is only the rendered
+   * window), and clamping against them made pan travel run out mid-note:
+   * the page stopped partway up or to the left and only a zoom-out /
+   * zoom-in cycle let the user reach that side.
+   *
+   * The origin offset is where the target's untransformed top-left corner
+   * sits relative to the viewport (its transformed rect backs out tx/ty).
    */
   private resolvePanBounds(
     viewport: HTMLElement,
@@ -81,8 +92,8 @@ export class PaneZoomController {
     return {
       viewportWidth: viewportRect.width,
       viewportHeight: viewportRect.height,
-      contentWidth: target.offsetWidth,
-      contentHeight: target.offsetHeight,
+      contentWidth: viewport.scrollWidth,
+      contentHeight: viewport.scrollHeight,
       originOffsetX: targetRect.left - this.state.tx - viewportRect.left,
       originOffsetY: targetRect.top - this.state.ty - viewportRect.top,
     };

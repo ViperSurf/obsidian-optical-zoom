@@ -278,3 +278,51 @@ describe('computeFocalZoomTransform — pan reach with real content size', () =>
     assert.equal(out.ty, 0); // top edge flush with viewport top (originOffsetY = 0)
   });
 });
+
+describe('computeFocalZoomTransform — pan bounds from the scroller scroll extent', () => {
+  // v1.2.0 geometry: content size is the viewport scroller's
+  // scrollWidth/scrollHeight — here a note exactly as wide as its
+  // 1000 x 800 viewport and 6000px tall, origin aligned with the viewport.
+  // (The sizer's offsetHeight in this layout can report only a rendered
+  // chunk; the scroll extent is the whole note by definition.)
+  const bounds = {
+    viewportWidth: 1000,
+    viewportHeight: 800,
+    contentWidth: 1000,
+    contentHeight: 6000,
+    originOffsetX: 0,
+    originOffsetY: 0,
+  };
+
+  it('permits full travel to all four edges at scale 2', () => {
+    const start = { scale: 2.0, tx: 0, ty: 0, isGestureActive: true }; // top-left flush
+    // Bottom-right flush: tx = 1000 - 2*1000 = -1000, ty = 800 - 2*6000 = -11200.
+    const br = computeFocalZoomTransform(start, 1.0, 500, 400, -1000, -11200, MIN, MAX, bounds);
+    assert.equal(br.tx, -1000);
+    assert.equal(br.ty, -11200);
+    assert.equal(bounds.originOffsetX + br.tx + br.scale * bounds.contentWidth, bounds.viewportWidth);
+    assert.equal(bounds.originOffsetY + br.ty + br.scale * bounds.contentHeight, bounds.viewportHeight);
+    // …and all the way back UP and LEFT to the start edges (the v1.1.1
+    // dead-end: travel ran out partway and the top/left were unreachable).
+    const back = computeFocalZoomTransform(br, 1.0, 500, 400, 1000, 11200, MIN, MAX, bounds);
+    assert.equal(back.tx, 0);
+    assert.equal(back.ty, 0);
+  });
+
+  it('clamps beyond all four edges at scale 2 without losing content', () => {
+    const start = { scale: 2.0, tx: -500, ty: -5000, isGestureActive: true };
+    const far = computeFocalZoomTransform(start, 1.0, 500, 400, -100000, -100000, MIN, MAX, bounds);
+    assert.equal(far.tx, -1000);
+    assert.equal(far.ty, -11200);
+    const near = computeFocalZoomTransform(start, 1.0, 500, 400, 100000, 100000, MIN, MAX, bounds);
+    assert.equal(near.tx, 0);
+    assert.equal(near.ty, 0);
+    // At both clamps the scaled content still covers the whole viewport.
+    for (const s of [far, near]) {
+      assert.ok(bounds.originOffsetX + s.tx <= 0);
+      assert.ok(bounds.originOffsetY + s.ty <= 0);
+      assert.ok(bounds.originOffsetX + s.tx + s.scale * bounds.contentWidth >= bounds.viewportWidth);
+      assert.ok(bounds.originOffsetY + s.ty + s.scale * bounds.contentHeight >= bounds.viewportHeight);
+    }
+  });
+});

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   shouldShield,
   isEdgeStart,
+  classifyOneFingerDrag,
   ZOOMED_SCALE_THRESHOLD,
 } from './.tmp/gesture-guards.mjs';
 
@@ -59,5 +60,43 @@ describe('isEdgeStart — drawer trigger zones at both container edges', () => {
     assert.equal(isEdgeStart(LEFT + 11, LEFT, WIDTH, 10), false);
     assert.equal(isEdgeStart(LEFT + WIDTH - 10, LEFT, WIDTH, 10), true);
     assert.equal(isEdgeStart(LEFT + WIDTH - 11, LEFT, WIDTH, 10), false);
+  });
+});
+
+describe('classifyOneFingerDrag — Markor-model one-finger pan claim', () => {
+  const THRESH = 6; // TOUCH_CLAIM_THRESHOLD_PX
+  const ZOOMED = 2.0;
+
+  it('stays pending below the threshold while zoomed', () => {
+    assert.equal(classifyOneFingerDrag(0, 0, THRESH, ZOOMED), 'pending');
+    assert.equal(classifyOneFingerDrag(3, 0, THRESH, ZOOMED), 'pending');
+    assert.equal(classifyOneFingerDrag(0, -5, THRESH, ZOOMED), 'pending');
+    assert.equal(classifyOneFingerDrag(4, 4, THRESH, ZOOMED), 'pending'); // hypot ≈ 5.66 < 6
+  });
+
+  it('claims at exactly the threshold', () => {
+    assert.equal(classifyOneFingerDrag(6, 0, THRESH, ZOOMED), 'pan');
+    assert.equal(classifyOneFingerDrag(0, -6, THRESH, ZOOMED), 'pan');
+  });
+
+  it('claims drags in all four cardinal directions while zoomed — no rejection path', () => {
+    assert.equal(classifyOneFingerDrag(30, 0, THRESH, ZOOMED), 'pan');   // right
+    assert.equal(classifyOneFingerDrag(-30, 0, THRESH, ZOOMED), 'pan');  // left
+    assert.equal(classifyOneFingerDrag(0, 30, THRESH, ZOOMED), 'pan');   // down
+    assert.equal(classifyOneFingerDrag(0, -30, THRESH, ZOOMED), 'pan');  // up
+  });
+
+  it('claims 45° diagonals while zoomed (the old classifier stranded these)', () => {
+    assert.equal(classifyOneFingerDrag(20, 20, THRESH, ZOOMED), 'pan');
+    assert.equal(classifyOneFingerDrag(-20, 20, THRESH, ZOOMED), 'pan');
+    assert.equal(classifyOneFingerDrag(20, -20, THRESH, ZOOMED), 'pan');  // up-right
+    assert.equal(classifyOneFingerDrag(-20, -20, THRESH, ZOOMED), 'pan'); // up-left
+  });
+
+  it('never claims at 100% (or in the rubber band), however far the drag', () => {
+    assert.equal(classifyOneFingerDrag(200, 200, THRESH, 1.0), 'pending');
+    assert.equal(classifyOneFingerDrag(-200, 0, THRESH, 1.0), 'pending');
+    assert.equal(classifyOneFingerDrag(0, -200, THRESH, 0.92), 'pending');
+    assert.equal(classifyOneFingerDrag(0, -200, THRESH, ZOOMED_SCALE_THRESHOLD), 'pending');
   });
 });

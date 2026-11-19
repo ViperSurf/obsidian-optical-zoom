@@ -1,6 +1,6 @@
 // src/input/input-recognizer.ts
 import { IS_APPLE_WEBKIT, DRAWER_EDGE_ZONE_PX, TOUCH_CLAIM_THRESHOLD_PX } from '../constants';
-import { isEdgeStart, shouldShield } from './gesture-guards';
+import { classifyOneFingerDrag, isEdgeStart, shouldShield } from './gesture-guards';
 import type { OpticalZoomSettings, PinchGestureFrame } from '../types';
 
 interface PointerSample {
@@ -15,8 +15,7 @@ interface SingleTouchPan {
   startY: number;
   lastX: number;
   lastY: number;
-  claimed: boolean;   // Horizontal-dominant drag claimed as a zoom pan
-  rejected: boolean;  // Vertical-dominant drag left to native scrolling
+  claimed: boolean;   // Drag claimed as a full two-axis pan of the zoomed page
 }
 
 export class CrossPlatformInputRecognizer {
@@ -228,9 +227,9 @@ export class CrossPlatformInputRecognizer {
     }
     // While zoomed, a one-finger drag is stopped from the very first move,
     // whatever its direction. stopPropagation does NOT affect native
-    // scrolling (only preventDefault does), so vertical drags still
-    // scroll natively; the bubble-phase handler below decides direction
-    // and preventDefaults only once a drag is claimed as a horizontal pan.
+    // scrolling (only preventDefault does); the bubble-phase handler
+    // below preventDefaults once the drag is claimed as a two-axis pan,
+    // which is what hands vertical movement to the transform as well.
     if (e.touches.length === 1 && shouldShield(this.getCurrentScale())) {
       e.stopPropagation();
     }
@@ -251,7 +250,6 @@ export class CrossPlatformInputRecognizer {
         lastX: t.clientX,
         lastY: t.clientY,
         claimed: false,
-        rejected: false,
       };
     } else {
       // A second finger supersedes any pending one-finger pan; the pinch
@@ -288,31 +286,35 @@ export class CrossPlatformInputRecognizer {
     pan.lastX = t.clientX;
     pan.lastY = t.clientY;
 
-    if (pan.rejected) return;
-
     if (!pan.claimed) {
-      // Wait until the drag direction is clear. The 6px threshold matches
-      // the loupe's own move-to-cancel distance, so claiming a pan and
-      // cancelling a pending loupe never fight over the same gesture.
-      if (Math.hypot(dxTotal, dyTotal) < TOUCH_CLAIM_THRESHOLD_PX) return;
-      if (Math.abs(dxTotal) > Math.abs(dyTotal) * 1.2) {
-        pan.claimed = true;
-      } else if (Math.abs(dyTotal) > Math.abs(dxTotal) * 1.2) {
-        // Vertical-dominant: native scrolling wins for the rest of this touch.
-        pan.rejected = true;
+      // Markor model: while zoomed, a one-finger drag past the threshold
+      // is claimed as a full two-axis pan WHATEVER its direction — there
+      // is no rejection path. The old direction classifier locked each
+      // touch to a single fate (horizontal pan OR native vertical scroll),
+      // so diagonal up/left drags were claimed or rejected inconsistently,
+      // and a rejected drag could not move horizontally at all (the editor
+      // has no native horizontal scroll), which read as "can't move up or
+      // left". The 6px threshold matches the loupe's own move-to-cancel
+      // distance, so claiming a pan and cancelling a pending loupe never
+      // fight over the same gesture. classifyOneFingerDrag also re-checks
+      // the zoom gate, so at 100% this never claims.
+      if (
+        classifyOneFingerDrag(dxTotal, dyTotal, TOUCH_CLAIM_THRESHOLD_PX, this.getCurrentScale()) !== 'pan'
+      ) {
         return;
-      } else {
-        return; // Ambiguous diagonal — keep evaluating on the next move.
       }
+      pan.claimed = true;
     }
 
-    // Claimed pan: the finger drags the zoomed page around. preventDefault
-    // stops native horizontal scrolling of the scroller; stopPropagation
-    // keeps the workspace drawer gestures from ever seeing the drag —
-    // including the first claimed move. (While zoomed the capture-phase
-    // handler has in fact already stopped every move from propagating,
-    // and the loupe is gated off while zoomed, so nothing of ours needs
-    // these events at window level.)
+    // Claimed pan: the finger drags the zoomed page around on both axes,
+    // replacing native scrolling for this touch (the pan clamp ranges over
+    // the note's full scroll extent, so every part of the note stays
+    // reachable). preventDefault stops native scrolling of the scroller;
+    // stopPropagation keeps the workspace drawer gestures from ever
+    // seeing the drag — including the first claimed move. (While zoomed
+    // the capture-phase handler has in fact already stopped every move
+    // from propagating, and the loupe is gated off while zoomed, so
+    // nothing of ours needs these events at window level.)
     e.preventDefault();
     e.stopPropagation();
     this.onFrame({

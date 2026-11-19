@@ -14,8 +14,8 @@ import type { AffineTransformState } from '../types';
 export interface PanBounds {
   viewportWidth: number;
   viewportHeight: number;
-  contentWidth: number;   // Target's untransformed layout width (offsetWidth)
-  contentHeight: number;  // Target's untransformed layout height (offsetHeight)
+  contentWidth: number;   // Full unscaled content width (viewport scroller's scrollWidth)
+  contentHeight: number;  // Full unscaled content height (viewport scroller's scrollHeight)
   originOffsetX: number;
   originOffsetY: number;
 }
