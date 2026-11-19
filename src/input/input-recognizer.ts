@@ -1,6 +1,19 @@
 // src/input/input-recognizer.ts
-import { IS_APPLE_WEBKIT, DRAWER_EDGE_ZONE_PX, TOUCH_CLAIM_THRESHOLD_PX } from '../constants';
-import { classifyOneFingerDrag, isEdgeStart, shouldShield } from './gesture-guards';
+import {
+  IS_APPLE_WEBKIT,
+  TOUCH_CLAIM_THRESHOLD_PX,
+  DRAWER_FLICK_EDGE_PX,
+  DRAWER_FLICK_MIN_TRAVEL_PX,
+  DRAWER_FLICK_MAX_MS,
+  EDGE_TOUCH_RESOLVE_MS,
+} from '../constants';
+import {
+  classifyOneFingerDrag,
+  edgeStartInfo,
+  isDrawerFlick,
+  shouldShield,
+  type DrawerEdge,
+} from './gesture-guards';
 import type { OpticalZoomSettings, PinchGestureFrame } from '../types';
 
 interface PointerSample {
@@ -15,7 +28,15 @@ interface SingleTouchPan {
   startY: number;
   lastX: number;
   lastY: number;
+  startEpoch: number;
   claimed: boolean;   // Drag claimed as a full two-axis pan of the zoomed page
+  // Deliberate-drawer classification for touches that start in the narrow
+  // flick zone at a container edge. Mid-pane touches have edge === null
+  // and are born resolved: they never go through classification.
+  edge: DrawerEdge | null;
+  edgeOffset: number;        // Distance from that edge at touchstart (px)
+  edgeResolved: boolean;     // Classification finished (flick or pan candidate)
+  drawerPassThrough: boolean; // Classified as a drawer flick: hands off for good
 }
 
 export class CrossPlatformInputRecognizer {
@@ -54,10 +75,13 @@ export class CrossPlatformInputRecognizer {
     // preventDefault() never reaches — so pinch shielding and the
     // one-finger zoom pan have to happen here, on the container, before
     // the events bubble up to the workspace.
-    // Capture phase first: while zoomed, edge touchstarts and every
-    // touchmove are stopped from the very first pixel, before any
-    // workspace handler can latch onto them (see the capture handlers).
-    this.container.addEventListener('touchstart', this.handleTouchStartCapture, { capture: true, passive: true });
+    // Capture phase first: while zoomed, touchmoves are stopped from the
+    // very first pixel, before any workspace handler can latch onto them
+    // (see the capture handler). Touchstarts are deliberately NOT stopped:
+    // Obsidian's drawer gesture tracks from touchstart, and a fast inward
+    // flick from the very edge must remain able to open a drawer on
+    // purpose while zoomed. Edge touchstarts are classified on the move
+    // instead (see handleTouchMove).
     this.container.addEventListener('touchmove', this.handleTouchMoveCapture, { capture: true, passive: true });
     this.container.addEventListener('touchstart', this.handleTouchStart, { passive: false });
     this.container.addEventListener('touchmove', this.handleTouchMove, { passive: false });
@@ -202,22 +226,6 @@ export class CrossPlatformInputRecognizer {
     }
   };
 
-  private handleTouchStartCapture = (e: TouchEvent): void => {
-    // Capture phase, before the event can bubble up to workspace-level
-    // drawer handlers. Obsidian's drawer gestures latch onto drags that
-    // START near the left or right edge, so while zoomed an edge
-    // touchstart never leaves the container. Mid-pane touchstarts
-    // propagate as before. stopPropagation here does not stop this
-    // recognizer's own listeners on the same element — the bubble-phase
-    // handler below still records the touch.
-    if (!shouldShield(this.getCurrentScale())) return;
-    if (e.touches.length !== 1) return;
-    const rect = this.container.getBoundingClientRect();
-    if (isEdgeStart(e.touches[0].clientX, rect.left, rect.width, DRAWER_EDGE_ZONE_PX)) {
-      e.stopPropagation();
-    }
-  };
-
   private handleTouchMoveCapture = (e: TouchEvent): void => {
     if (this.getSettings().interactionMode === 'loupe-only') return;
     // A pinch must never reach workspace handlers from the first pixel.
@@ -230,26 +238,42 @@ export class CrossPlatformInputRecognizer {
     // scrolling (only preventDefault does); the bubble-phase handler
     // below preventDefaults once the drag is claimed as a two-axis pan,
     // which is what hands vertical movement to the transform as well.
+    // EXCEPTION: a touch that started in the edge flick zone is left
+    // unshielded until the bubble-phase handler classifies it — shielding
+    // it here would starve Obsidian's drawer gesture of the very moves it
+    // needs to recognize a deliberate flick — and a touch already
+    // classified as a drawer flick is never shielded at all.
     if (e.touches.length === 1 && shouldShield(this.getCurrentScale())) {
+      const pan = this.singleTouchPan;
+      if (pan && (pan.drawerPassThrough || (pan.edge !== null && !pan.edgeResolved))) {
+        return;
+      }
       e.stopPropagation();
     }
   };
 
   private handleTouchStart = (e: TouchEvent): void => {
-    // Bubble phase records the touch for pan tracking. (While zoomed, the
-    // capture-phase handler above has already stopped edge touchstarts
-    // from propagating any further; at 100% nothing is stopped, so the
-    // loupe controller at window level still sees every touchstart — in
-    // particular a second finger landing, which cancels its long-press.)
+    // Bubble phase records the touch for pan tracking. Nothing stops
+    // touchstarts from propagating — at 100% the loupe controller at
+    // window level sees every one (in particular a second finger landing,
+    // which cancels its long-press), and while zoomed Obsidian's drawer
+    // gesture must see edge touchstarts so a deliberate flick can work.
     if (e.touches.length === 1) {
       const t = e.touches[0];
+      const rect = this.container.getBoundingClientRect();
+      const edgeInfo = edgeStartInfo(t.clientX, rect.left, rect.width, DRAWER_FLICK_EDGE_PX);
       this.singleTouchPan = {
         id: t.identifier,
         startX: t.clientX,
         startY: t.clientY,
         lastX: t.clientX,
         lastY: t.clientY,
+        startEpoch: performance.now(),
         claimed: false,
+        edge: edgeInfo?.edge ?? null,
+        edgeOffset: edgeInfo?.offsetFromEdge ?? 0,
+        edgeResolved: edgeInfo === null,
+        drawerPassThrough: false,
       };
     } else {
       // A second finger supersedes any pending one-finger pan; the pinch
@@ -285,6 +309,46 @@ export class CrossPlatformInputRecognizer {
     const stepDY = t.clientY - pan.lastY;
     pan.lastX = t.clientX;
     pan.lastY = t.clientY;
+
+    // A touch classified as a deliberate drawer flick is hands-off for
+    // the rest of its life: no shielding, no claiming — Obsidian opens
+    // the drawer.
+    if (pan.drawerPassThrough) return;
+
+    if (pan.edge !== null && !pan.edgeResolved) {
+      // Edge-starting touch, not yet classified. Until it resolves, its
+      // moves are neither shielded (the capture handler checks this same
+      // state) nor claimed: the drawer gesture keeps seeing them.
+      const elapsedMs = performance.now() - pan.startEpoch;
+      if (
+        isDrawerFlick(
+          pan.edge,
+          pan.edgeOffset,
+          dxTotal,
+          elapsedMs,
+          DRAWER_FLICK_EDGE_PX,
+          DRAWER_FLICK_MIN_TRAVEL_PX,
+          DRAWER_FLICK_MAX_MS
+        )
+      ) {
+        pan.drawerPassThrough = true;
+        return;
+      }
+      const movingInOpeningDirection = pan.edge === 'left' ? dxTotal > 0 : dxTotal < 0;
+      if (
+        elapsedMs >= EDGE_TOUCH_RESOLVE_MS ||
+        Math.abs(dxTotal) >= DRAWER_FLICK_MIN_TRAVEL_PX ||
+        (Math.hypot(dxTotal, dyTotal) >= TOUCH_CLAIM_THRESHOLD_PX && !movingInOpeningDirection)
+      ) {
+        // Not a flick: too slow, travelled far but slowly, or heading in
+        // the non-opening direction. It is a normal pan candidate — from
+        // this move onward the usual shielding and claim logic apply
+        // (this move itself is stopped below if it claims).
+        pan.edgeResolved = true;
+      } else {
+        return; // Still ambiguous — keep hands off.
+      }
+    }
 
     if (!pan.claimed) {
       // Markor model: while zoomed, a one-finger drag past the threshold
@@ -377,7 +441,6 @@ export class CrossPlatformInputRecognizer {
     this.container.removeEventListener('pointermove', this.handlePointerMove);
     this.container.removeEventListener('pointerup', this.handlePointerUpOrCancel);
     this.container.removeEventListener('pointercancel', this.handlePointerUpOrCancel);
-    this.container.removeEventListener('touchstart', this.handleTouchStartCapture, true);
     this.container.removeEventListener('touchmove', this.handleTouchMoveCapture, true);
     this.container.removeEventListener('touchstart', this.handleTouchStart);
     this.container.removeEventListener('touchmove', this.handleTouchMove);

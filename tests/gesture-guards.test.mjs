@@ -4,6 +4,8 @@ import {
   shouldShield,
   isEdgeStart,
   classifyOneFingerDrag,
+  edgeStartInfo,
+  isDrawerFlick,
   ZOOMED_SCALE_THRESHOLD,
 } from './.tmp/gesture-guards.mjs';
 
@@ -98,5 +100,65 @@ describe('classifyOneFingerDrag — Markor-model one-finger pan claim', () => {
     assert.equal(classifyOneFingerDrag(-200, 0, THRESH, 1.0), 'pending');
     assert.equal(classifyOneFingerDrag(0, -200, THRESH, 0.92), 'pending');
     assert.equal(classifyOneFingerDrag(0, -200, THRESH, ZOOMED_SCALE_THRESHOLD), 'pending');
+  });
+});
+
+describe('edgeStartInfo — locating a touch start in the drawer flick zone', () => {
+  const FLICK_EDGE = 12; // DRAWER_FLICK_EDGE_PX
+
+  it('reports the left edge and the offset from it', () => {
+    assert.deepEqual(edgeStartInfo(LEFT, LEFT, WIDTH, FLICK_EDGE), { edge: 'left', offsetFromEdge: 0 });
+    assert.deepEqual(edgeStartInfo(LEFT + 7, LEFT, WIDTH, FLICK_EDGE), { edge: 'left', offsetFromEdge: 7 });
+    assert.deepEqual(edgeStartInfo(LEFT + FLICK_EDGE, LEFT, WIDTH, FLICK_EDGE), { edge: 'left', offsetFromEdge: 12 });
+  });
+
+  it('reports the right edge and the offset from it', () => {
+    assert.deepEqual(edgeStartInfo(LEFT + WIDTH, LEFT, WIDTH, FLICK_EDGE), { edge: 'right', offsetFromEdge: 0 });
+    assert.deepEqual(edgeStartInfo(LEFT + WIDTH - 5, LEFT, WIDTH, FLICK_EDGE), { edge: 'right', offsetFromEdge: 5 });
+    assert.deepEqual(edgeStartInfo(LEFT + WIDTH - FLICK_EDGE, LEFT, WIDTH, FLICK_EDGE), { edge: 'right', offsetFromEdge: 12 });
+  });
+
+  it('returns null for mid-pane starts, just outside the zone, and outside the container', () => {
+    assert.equal(edgeStartInfo(LEFT + FLICK_EDGE + 1, LEFT, WIDTH, FLICK_EDGE), null);
+    assert.equal(edgeStartInfo(LEFT + WIDTH - FLICK_EDGE - 1, LEFT, WIDTH, FLICK_EDGE), null);
+    assert.equal(edgeStartInfo(LEFT + WIDTH / 2, LEFT, WIDTH, FLICK_EDGE), null);
+    assert.equal(edgeStartInfo(LEFT - 1, LEFT, WIDTH, FLICK_EDGE), null);
+    assert.equal(edgeStartInfo(LEFT + WIDTH + 1, LEFT, WIDTH, FLICK_EDGE), null);
+    assert.equal(edgeStartInfo(LEFT, LEFT, 0, FLICK_EDGE), null);
+  });
+});
+
+describe('isDrawerFlick — deliberate drawer access while zoomed', () => {
+  // Defaults mirror DRAWER_FLICK_EDGE_PX / _MIN_TRAVEL_PX / _MAX_MS.
+  it('accepts a fast inward flick from the left edge', () => {
+    assert.equal(isDrawerFlick('left', 0, 24, 120), true);  // exact boundaries
+    assert.equal(isDrawerFlick('left', 8, 30, 80), true);
+    assert.equal(isDrawerFlick('left', 12, 40, 30), true);   // start-offset boundary
+  });
+
+  it('accepts a fast inward flick from the right edge', () => {
+    assert.equal(isDrawerFlick('right', 0, -24, 120), true);
+    assert.equal(isDrawerFlick('right', 5, -30, 100), true);
+    assert.equal(isDrawerFlick('right', 12, -60, 16), true);
+  });
+
+  it('rejects slow edge drags — those are pans', () => {
+    assert.equal(isDrawerFlick('left', 4, 30, 121), false);  // just past the window
+    assert.equal(isDrawerFlick('left', 4, 60, 400), false);
+    assert.equal(isDrawerFlick('right', 4, -30, 250), false);
+  });
+
+  it('rejects starts outside the flick zone and mid-pane starts', () => {
+    assert.equal(isDrawerFlick('left', 13, 40, 50), false);  // started 13px in — a pan start
+    assert.equal(isDrawerFlick('right', 20, -40, 50), false);
+    assert.equal(isDrawerFlick(null, 0, 100, 20), false);
+  });
+
+  it('rejects movement in the non-opening direction and insufficient travel', () => {
+    assert.equal(isDrawerFlick('left', 4, -30, 60), false);  // left edge, moving left
+    assert.equal(isDrawerFlick('right', 4, 30, 60), false);  // right edge, moving right
+    assert.equal(isDrawerFlick('left', 4, 23, 60), false);   // 1px short of the travel minimum
+    assert.equal(isDrawerFlick('right', 4, -23, 60), false);
+    assert.equal(isDrawerFlick('left', 4, 0, 10), false);    // no movement yet
   });
 });
