@@ -8,6 +8,17 @@ interface PointerSample {
   clientY: number;
 }
 
+interface SingleTouchPan {
+  id: number;
+  startX: number;
+  startY: number;
+  lastX: number;
+  lastY: number;
+  claimed: boolean;   // Horizontal-dominant drag claimed as a zoom pan
+  rejected: boolean;  // Vertical-dominant drag left to native scrolling
+  shielded: boolean;  // Past the first claimed move: stopPropagation active
+}
+
 export class CrossPlatformInputRecognizer {
   private activePointers: Map<number, PointerSample> = new Map();
   private prevPinchDistance: number | null = null;
@@ -16,6 +27,7 @@ export class CrossPlatformInputRecognizer {
   private lastTwoFingerTapEpoch = 0;
   private twoFingerTouchStartEpoch = 0;
   private isWebKitGestureRunning = false;
+  private singleTouchPan: SingleTouchPan | null = null;
 
   constructor(
     private readonly container: HTMLElement,
@@ -37,6 +49,16 @@ export class CrossPlatformInputRecognizer {
     this.container.addEventListener('pointermove', this.handlePointerMove, { passive: false });
     this.container.addEventListener('pointerup', this.handlePointerUpOrCancel, { passive: true });
     this.container.addEventListener('pointercancel', this.handlePointerUpOrCancel, { passive: true });
+
+    // 2b. Raw touch events. Obsidian's workspace drawer gestures are driven
+    // by touch events at the workspace level, which pointer-event
+    // preventDefault() never reaches — so pinch shielding and the
+    // one-finger zoom pan have to happen here, on the container, before
+    // the events bubble up to the workspace.
+    this.container.addEventListener('touchstart', this.handleTouchStart, { passive: false });
+    this.container.addEventListener('touchmove', this.handleTouchMove, { passive: false });
+    this.container.addEventListener('touchend', this.handleTouchEndOrCancel, { passive: true });
+    this.container.addEventListener('touchcancel', this.handleTouchEndOrCancel, { passive: true });
 
     // 3. iOS / macOS WebKit Proprietary GestureEvents (Safari/WKWebView fallback)
     if (IS_APPLE_WEBKIT && 'ongesturestart' in window) {
@@ -176,6 +198,109 @@ export class CrossPlatformInputRecognizer {
     }
   };
 
+  private handleTouchStart = (e: TouchEvent): void => {
+    // Never stopPropagation on touchstart: the loupe controller listens at
+    // window level and must see every touchstart — in particular a second
+    // finger landing, which cancels its long-press timer.
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      this.singleTouchPan = {
+        id: t.identifier,
+        startX: t.clientX,
+        startY: t.clientY,
+        lastX: t.clientX,
+        lastY: t.clientY,
+        claimed: false,
+        rejected: false,
+        shielded: false,
+      };
+    } else {
+      // A second finger supersedes any pending one-finger pan; the pinch
+      // path (pointer events) takes over from here.
+      this.singleTouchPan = null;
+    }
+  };
+
+  private handleTouchMove = (e: TouchEvent): void => {
+    if (this.getSettings().interactionMode === 'loupe-only') return;
+
+    // Two-finger gesture: shield it from workspace-level touch handlers so
+    // a pinch (or its pan component) can never be read as a drawer swipe.
+    // The zoom frames themselves still come from the pointer-event path.
+    if (e.touches.length >= 2) {
+      e.preventDefault();
+      e.stopPropagation();
+      this.singleTouchPan = null;
+      return;
+    }
+
+    if (e.touches.length !== 1 || !this.singleTouchPan) return;
+    // At 100% a one-finger drag is native scrolling — never interfere.
+    if (this.getCurrentScale() <= 1.005) return;
+
+    const t = e.touches[0];
+    const pan = this.singleTouchPan;
+    if (t.identifier !== pan.id) return;
+
+    const dxTotal = t.clientX - pan.startX;
+    const dyTotal = t.clientY - pan.startY;
+    const stepDX = t.clientX - pan.lastX;
+    const stepDY = t.clientY - pan.lastY;
+    pan.lastX = t.clientX;
+    pan.lastY = t.clientY;
+
+    if (pan.rejected) return;
+
+    if (!pan.claimed) {
+      // Wait until the drag direction is clear. The 10px threshold matches
+      // the loupe's own move-to-cancel distance, so claiming a pan and
+      // cancelling a pending loupe never fight over the same gesture.
+      if (Math.hypot(dxTotal, dyTotal) < 10) return;
+      if (Math.abs(dxTotal) > Math.abs(dyTotal) * 1.2) {
+        pan.claimed = true;
+      } else if (Math.abs(dyTotal) > Math.abs(dxTotal) * 1.2) {
+        // Vertical-dominant: native scrolling wins for the rest of this touch.
+        pan.rejected = true;
+        return;
+      } else {
+        return; // Ambiguous diagonal — keep evaluating on the next move.
+      }
+    }
+
+    // Claimed pan: the finger drags the zoomed page around. preventDefault
+    // stops native horizontal scrolling of the scroller; stopPropagation
+    // keeps the workspace drawer gestures from ever seeing the drag. The
+    // first claimed move is deliberately *not* propagation-stopped, so the
+    // loupe controller (window level) still sees a >10px move and cancels
+    // any pending long-press; shielding applies from the next move on.
+    e.preventDefault();
+    if (pan.shielded) {
+      e.stopPropagation();
+    } else {
+      pan.shielded = true;
+    }
+    this.onFrame({
+      scaleDelta: 1.0,
+      panDeltaX: stepDX,
+      panDeltaY: stepDY,
+      focalClientX: t.clientX,
+      focalClientY: t.clientY,
+      source: 'pointer',
+    });
+  };
+
+  private handleTouchEndOrCancel = (e: TouchEvent): void => {
+    const wasClaimed = this.singleTouchPan?.claimed ?? false;
+    if (e.touches.length === 0) {
+      this.singleTouchPan = null;
+    }
+    // Never stopPropagation: the loupe controller clears its own state on
+    // touchend at window level.
+    if (wasClaimed && e.touches.length === 0) {
+      this.onGestureEnd();
+    }
+  };
+
   private handleGestureStart = (e: any): void => {
     if (this.getSettings().interactionMode === 'loupe-only') return;
     if (this.activePointers.size >= 2) return; // Handled by PointerEvents
@@ -214,6 +339,11 @@ export class CrossPlatformInputRecognizer {
     this.container.removeEventListener('pointermove', this.handlePointerMove);
     this.container.removeEventListener('pointerup', this.handlePointerUpOrCancel);
     this.container.removeEventListener('pointercancel', this.handlePointerUpOrCancel);
+    this.container.removeEventListener('touchstart', this.handleTouchStart);
+    this.container.removeEventListener('touchmove', this.handleTouchMove);
+    this.container.removeEventListener('touchend', this.handleTouchEndOrCancel);
+    this.container.removeEventListener('touchcancel', this.handleTouchEndOrCancel);
+    this.singleTouchPan = null;
     if (IS_APPLE_WEBKIT && 'ongesturestart' in window) {
       this.container.removeEventListener('gesturestart', this.handleGestureStart as EventListener);
       this.container.removeEventListener('gesturechange', this.handleGestureChange as EventListener);
