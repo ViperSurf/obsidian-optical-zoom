@@ -1,5 +1,6 @@
 // src/input/input-recognizer.ts
-import { IS_APPLE_WEBKIT } from '../constants';
+import { IS_APPLE_WEBKIT, DRAWER_EDGE_ZONE_PX, TOUCH_CLAIM_THRESHOLD_PX } from '../constants';
+import { isEdgeStart, shouldShield } from './gesture-guards';
 import type { OpticalZoomSettings, PinchGestureFrame } from '../types';
 
 interface PointerSample {
@@ -16,7 +17,6 @@ interface SingleTouchPan {
   lastY: number;
   claimed: boolean;   // Horizontal-dominant drag claimed as a zoom pan
   rejected: boolean;  // Vertical-dominant drag left to native scrolling
-  shielded: boolean;  // Past the first claimed move: stopPropagation active
 }
 
 export class CrossPlatformInputRecognizer {
@@ -55,6 +55,11 @@ export class CrossPlatformInputRecognizer {
     // preventDefault() never reaches — so pinch shielding and the
     // one-finger zoom pan have to happen here, on the container, before
     // the events bubble up to the workspace.
+    // Capture phase first: while zoomed, edge touchstarts and every
+    // touchmove are stopped from the very first pixel, before any
+    // workspace handler can latch onto them (see the capture handlers).
+    this.container.addEventListener('touchstart', this.handleTouchStartCapture, { capture: true, passive: true });
+    this.container.addEventListener('touchmove', this.handleTouchMoveCapture, { capture: true, passive: true });
     this.container.addEventListener('touchstart', this.handleTouchStart, { passive: false });
     this.container.addEventListener('touchmove', this.handleTouchMove, { passive: false });
     this.container.addEventListener('touchend', this.handleTouchEndOrCancel, { passive: true });
@@ -102,7 +107,7 @@ export class CrossPlatformInputRecognizer {
     }
 
     // Case B: Two-finger horizontal/vertical trackpad pan while zoomed in (> 1.0x)
-    if (this.getCurrentScale() > 1.005 && e.deltaX !== 0) {
+    if (shouldShield(this.getCurrentScale()) && e.deltaX !== 0) {
       e.preventDefault();
       this.onFrame({
         scaleDelta: 1.0,
@@ -198,10 +203,45 @@ export class CrossPlatformInputRecognizer {
     }
   };
 
+  private handleTouchStartCapture = (e: TouchEvent): void => {
+    // Capture phase, before the event can bubble up to workspace-level
+    // drawer handlers. Obsidian's drawer gestures latch onto drags that
+    // START near the left or right edge, so while zoomed an edge
+    // touchstart never leaves the container. Mid-pane touchstarts
+    // propagate as before. stopPropagation here does not stop this
+    // recognizer's own listeners on the same element — the bubble-phase
+    // handler below still records the touch.
+    if (!shouldShield(this.getCurrentScale())) return;
+    if (e.touches.length !== 1) return;
+    const rect = this.container.getBoundingClientRect();
+    if (isEdgeStart(e.touches[0].clientX, rect.left, rect.width, DRAWER_EDGE_ZONE_PX)) {
+      e.stopPropagation();
+    }
+  };
+
+  private handleTouchMoveCapture = (e: TouchEvent): void => {
+    if (this.getSettings().interactionMode === 'loupe-only') return;
+    // A pinch must never reach workspace handlers from the first pixel.
+    if (e.touches.length >= 2) {
+      e.stopPropagation();
+      return;
+    }
+    // While zoomed, a one-finger drag is stopped from the very first move,
+    // whatever its direction. stopPropagation does NOT affect native
+    // scrolling (only preventDefault does), so vertical drags still
+    // scroll natively; the bubble-phase handler below decides direction
+    // and preventDefaults only once a drag is claimed as a horizontal pan.
+    if (e.touches.length === 1 && shouldShield(this.getCurrentScale())) {
+      e.stopPropagation();
+    }
+  };
+
   private handleTouchStart = (e: TouchEvent): void => {
-    // Never stopPropagation on touchstart: the loupe controller listens at
-    // window level and must see every touchstart — in particular a second
-    // finger landing, which cancels its long-press timer.
+    // Bubble phase records the touch for pan tracking. (While zoomed, the
+    // capture-phase handler above has already stopped edge touchstarts
+    // from propagating any further; at 100% nothing is stopped, so the
+    // loupe controller at window level still sees every touchstart — in
+    // particular a second finger landing, which cancels its long-press.)
     if (e.touches.length === 1) {
       const t = e.touches[0];
       this.singleTouchPan = {
@@ -212,7 +252,6 @@ export class CrossPlatformInputRecognizer {
         lastY: t.clientY,
         claimed: false,
         rejected: false,
-        shielded: false,
       };
     } else {
       // A second finger supersedes any pending one-finger pan; the pinch
@@ -236,7 +275,7 @@ export class CrossPlatformInputRecognizer {
 
     if (e.touches.length !== 1 || !this.singleTouchPan) return;
     // At 100% a one-finger drag is native scrolling — never interfere.
-    if (this.getCurrentScale() <= 1.005) return;
+    if (!shouldShield(this.getCurrentScale())) return;
 
     const t = e.touches[0];
     const pan = this.singleTouchPan;
@@ -252,10 +291,10 @@ export class CrossPlatformInputRecognizer {
     if (pan.rejected) return;
 
     if (!pan.claimed) {
-      // Wait until the drag direction is clear. The 10px threshold matches
+      // Wait until the drag direction is clear. The 6px threshold matches
       // the loupe's own move-to-cancel distance, so claiming a pan and
       // cancelling a pending loupe never fight over the same gesture.
-      if (Math.hypot(dxTotal, dyTotal) < 10) return;
+      if (Math.hypot(dxTotal, dyTotal) < TOUCH_CLAIM_THRESHOLD_PX) return;
       if (Math.abs(dxTotal) > Math.abs(dyTotal) * 1.2) {
         pan.claimed = true;
       } else if (Math.abs(dyTotal) > Math.abs(dxTotal) * 1.2) {
@@ -269,16 +308,13 @@ export class CrossPlatformInputRecognizer {
 
     // Claimed pan: the finger drags the zoomed page around. preventDefault
     // stops native horizontal scrolling of the scroller; stopPropagation
-    // keeps the workspace drawer gestures from ever seeing the drag. The
-    // first claimed move is deliberately *not* propagation-stopped, so the
-    // loupe controller (window level) still sees a >10px move and cancels
-    // any pending long-press; shielding applies from the next move on.
+    // keeps the workspace drawer gestures from ever seeing the drag —
+    // including the first claimed move. (While zoomed the capture-phase
+    // handler has in fact already stopped every move from propagating,
+    // and the loupe is gated off while zoomed, so nothing of ours needs
+    // these events at window level.)
     e.preventDefault();
-    if (pan.shielded) {
-      e.stopPropagation();
-    } else {
-      pan.shielded = true;
-    }
+    e.stopPropagation();
     this.onFrame({
       scaleDelta: 1.0,
       panDeltaX: stepDX,
@@ -339,6 +375,8 @@ export class CrossPlatformInputRecognizer {
     this.container.removeEventListener('pointermove', this.handlePointerMove);
     this.container.removeEventListener('pointerup', this.handlePointerUpOrCancel);
     this.container.removeEventListener('pointercancel', this.handlePointerUpOrCancel);
+    this.container.removeEventListener('touchstart', this.handleTouchStartCapture, true);
+    this.container.removeEventListener('touchmove', this.handleTouchMoveCapture, true);
     this.container.removeEventListener('touchstart', this.handleTouchStart);
     this.container.removeEventListener('touchmove', this.handleTouchMove);
     this.container.removeEventListener('touchend', this.handleTouchEndOrCancel);

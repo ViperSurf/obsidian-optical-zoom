@@ -1,6 +1,7 @@
 // Test runner: bundles the real src/math/affine-focal.ts (and its constants
-// dependency) with esbuild, aliasing the types-only `obsidian` package to a
-// small stub, then runs the node:test suite against that bundle.
+// dependency) and src/input/gesture-guards.ts with esbuild, aliasing the
+// types-only `obsidian` package to a small stub, then runs the node:test
+// suites against those bundles.
 import * as esbuild from 'esbuild';
 import { spawnSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
@@ -20,20 +21,34 @@ const obsidianStub = {
   },
 };
 
-await esbuild.build({
-  entryPoints: [path.join(here, '..', 'src', 'math', 'affine-focal.ts')],
+const bundleOpts = {
   bundle: true,
   format: 'esm',
   platform: 'node',
   target: 'es2022',
-  outfile: path.join(outdir, 'affine-focal.mjs'),
   plugins: [obsidianStub],
   logLevel: 'warning',
+};
+
+await esbuild.build({
+  ...bundleOpts,
+  entryPoints: [path.join(here, '..', 'src', 'math', 'affine-focal.ts')],
+  outfile: path.join(outdir, 'affine-focal.mjs'),
+});
+
+await esbuild.build({
+  ...bundleOpts,
+  entryPoints: [path.join(here, '..', 'src', 'input', 'gesture-guards.ts')],
+  outfile: path.join(outdir, 'gesture-guards.mjs'),
 });
 
 const result = spawnSync(
   process.execPath,
-  ['--test', path.join(here, 'affine-focal.test.mjs')],
+  [
+    '--test',
+    path.join(here, 'affine-focal.test.mjs'),
+    path.join(here, 'gesture-guards.test.mjs'),
+  ],
   { stdio: 'inherit' }
 );
 process.exit(result.status ?? 1);
