@@ -7,12 +7,25 @@ export const DEFAULT_SETTINGS: OpticalZoomSettings = {
   zoomSensitivity: 1.0,
   maxZoomScale: 3.0,
   minZoomScale: 1.0,
+  hotkeyZoomStepPercent: 25,
   loupeSizePx: 240,
   loupeMagnification: 2.0,
+  loupeShape: 'rounded',
   desktopLoupeKey: 'Alt',
   mobileTouchLoupe: true,
   rememberZoomPerTab: false,
+  rememberZoomPerNote: false,
+  savedNoteZooms: {},
+  snapFeedback: true,
+  panMomentum: true,
+  pinchJitterFilter: true,
+  resetOnEscape: false,
+  showStatusBarZoom: true,
+  zoomIndicatorMode: 'always',
+  mobileIndicatorPosition: 'bottom-center',
 };
+
+export const INDICATOR_FADE_DELAY_MS = 1800;
 
 export const SNAP_THRESHOLD_LOW = 0.96;
 export const SNAP_THRESHOLD_HIGH = 1.04;

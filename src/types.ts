@@ -2,20 +2,39 @@
 import type { WorkspaceLeaf } from 'obsidian';
 
 export type ZoomInteractionMode = 'both' | 'pinch-only' | 'loupe-only';
-export type LoupeSizePreset = 180 | 240 | 320;
-export type LoupeMagnificationPreset = 1.5 | 2.0 | 2.5;
+export type LoupeMagnificationPreset = 1.25 | 1.5 | 2.0 | 2.5 | 3.0 | 4.0;
+export type LoupeShape = 'rounded' | 'circle';
 export type DesktopLoupeModifier = 'Alt' | 'Control' | 'Shift' | 'Disabled';
+export type ZoomIndicatorMode = 'always' | 'auto-fade' | 'hidden';
+export type IndicatorCornerPosition =
+  | 'bottom-center'
+  | 'bottom-right'
+  | 'bottom-left'
+  | 'top-center'
+  | 'top-right'
+  | 'top-left';
 
 export interface OpticalZoomSettings {
   interactionMode: ZoomInteractionMode;
   zoomSensitivity: number;          // 0.5 to 2.0, default 1.0
   maxZoomScale: number;             // 2.0 to 5.0, default 3.0 (300%)
   minZoomScale: number;             // Fixed at 1.0 (100% floor with rubber-band to 0.92)
-  loupeSizePx: LoupeSizePreset;     // default 240
+  hotkeyZoomStepPercent: number;    // 5 to 50, default 25
+  loupeSizePx: number;              // 140 to 400, default 240
   loupeMagnification: LoupeMagnificationPreset; // default 2.0
+  loupeShape: LoupeShape;           // default 'rounded'
   desktopLoupeKey: DesktopLoupeModifier;        // default 'Alt'
   mobileTouchLoupe: boolean;        // default true (Long-press & drag finger-offset loupe)
   rememberZoomPerTab: boolean;      // default false
+  rememberZoomPerNote: boolean;     // default false
+  savedNoteZooms: Record<string, number>; // persisted per-file zoom scales
+  snapFeedback: boolean;            // default true (haptic + subtle pulse on 100% snap)
+  panMomentum: boolean;             // default true (smooth deceleration after 1-finger pan)
+  pinchJitterFilter: boolean;       // default true (ignore tiny pinch distance jitter during 2-finger pan)
+  resetOnEscape: boolean;           // default false
+  showStatusBarZoom: boolean;       // default true
+  zoomIndicatorMode: ZoomIndicatorMode;           // default 'always'
+  mobileIndicatorPosition: IndicatorCornerPosition; // default 'bottom-right'
 }
 
 export interface AffineTransformState {

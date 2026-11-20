@@ -1,8 +1,8 @@
 # Optical Zoom
 
-A pinch-to-zoom & loupe magnifier plugin for Obsidian. True GPU-accelerated **optical** zoom for your notes — pinch to magnify the whole rendered note, or hold a key / long-press to inspect a spot through a magnifying loupe — without ever changing your font size.
+A pinch-to-zoom & loupe magnifier plugin for Obsidian. True GPU-accelerated **optical** zoom for your notes **without text reflow** — pinch to magnify the whole rendered note, or hold a key / long-press to inspect a spot through a magnifying loupe — without ever changing your font size or reflowing lines.
 
-Obsidian's built-in zoom changes font size and reflows text. This plugin instead scales the already-rendered note surface with a GPU transform (`translate3d(...) scale(...)`), so everything grows together, in exact proportion:
+Obsidian's built-in zoom changes font size and reflows text. This plugin instead scales the already-rendered note surface with a GPU transform (`translate3d(...) scale(...)`), so **zero text reflow** occurs and everything grows together in exact proportion:
 
 - LaTeX / MathJax equations and subscripts
 - Mermaid diagrams, SVG, tables, and embedded images
@@ -64,26 +64,38 @@ You can also install and auto-update via the [BRAT](https://github.com/TfTHacker
 | Loupe (desktop) | Hold `Alt` (configurable: `Ctrl`, `Shift`, or disabled) and move the mouse — no click needed |
 | Loupe (mobile) | Long-press (500 ms) with one finger **at 100% zoom** and drag; the lens floats 76 px above your thumb so it never covers what you're reading. While zoomed in, a held finger pans the page instead — the loupe never opens over already-magnified content |
 | Reset to 100% | `Ctrl`/`Cmd` + `0`, click the zoom pill, or two-finger double-tap |
-| Zoom in / out (commands) | `Ctrl`/`Cmd` + `Shift` + `=` (+25%) / `Ctrl`/`Cmd` + `Shift` + `-` (−20%), or use the command palette |
+| Zoom in / out (commands) | `Ctrl`/`Cmd` + `Shift` + `=` / `Ctrl`/`Cmd` + `Shift` + `-` (configurable step %, default 25%), or use the command palette |
 
 Commands available in the palette:
 
 - **Reset optical zoom to 100%**
-- **Optical zoom in (+25%)**
-- **Optical zoom out (−20%)**
+- **Optical zoom in**
+- **Optical zoom out**
+- **Toggle magnifying loupe**
+- **Toggle zoom lock**
 
 ## Settings
 
 | Setting | Options | Default | What it does |
 | --- | --- | --- | --- |
 | Zoom interaction mode | Both / Pinch only / Loupe only | Both | Choose which magnification methods are active. |
-| Zoom sensitivity | 0.5× – 2.0× slider | 1.0× | How fast pinching zooms (1.0× is natural 1:1 tracking). |
-| Maximum magnification | 200% / 300% / 400% / 500% | 300% | Caps how far you can zoom into dense formulas, graphs, or images. |
-| Loupe lens size | 180 px / 240 px / 320 px | 240 px | Diameter of the magnifying lens. |
-| Loupe magnification | 1.5× / 2.0× / 2.5× | 2.0× | Optical power of the lens. |
+| Zoom speed | 0.5× – 2.0× slider | 1.0× | Controls trackpad and touch pinch velocity. |
+| Maximum magnification | 200% / 300% / 400% / 500% | 300% | Caps how far you can zoom into dense formulas, graphs, tables, or images. |
+| Hotkey zoom step (%) | 5% – 50% slider | 25% | Step size used by Optical zoom in / out commands and hotkeys. |
+| Pinch jitter stabilization | On / Off | On | Filters tiny finger-distance fluctuations so 2-finger panning stays steady. |
+| Smooth pan momentum | On / Off | On | Adds gentle deceleration after releasing a fast 1-finger pan on touchscreens. |
+| Reset zoom on Escape | On / Off | Off | Pressing Escape while zoomed (with no modal/loupe open) resets to 100%. |
+| Loupe lens size (px) | 140–400 px slider | 240 px | Diameter of the magnifying glass lens. |
+| Loupe magnification power | 1.25×–4.0× | 2.0× | Optical zoom strength inside the magnifying glass. |
+| Loupe lens shape | Rounded Rectangle / Circle | Rounded Rectangle | Chooses between rounded-square and circular loupe lens. |
 | Desktop loupe key | Alt / Ctrl / Shift / Disabled | Alt | Modifier key held to summon the loupe on desktop. |
-| Mobile touch loupe | On / Off | On | Enables the long-press finger-offset loupe on Android/iOS. |
+| Mobile touch loupe | On / Off | On | Long-press (500 ms) with 1 finger at 100% zoom and drag (offset above finger). |
 | Remember zoom per tab | On / Off | Off | Keeps each tab's zoom level when switching notes. When off, switching tabs resets zoom to 100%. |
+| Remember zoom per note | On / Off | Off | Persists zoom level per file path across sessions. |
+| 100% snap feedback | On / Off | On | Subtle visual pulse (and light vibration on mobile) when snapping to 100%. |
+| Show zoom in status bar | On / Off | On | Shows or hides the desktop status bar zoom pill while zoomed. |
+| Zoom indicator visibility | Always / Auto-fade / Hidden | Always | Keeps the zoom pill visible, fades it out after zooming, or hides it. |
+| Mobile indicator position | Bottom/Top Center, Left, or Right | Bottom Center | Places the floating mobile reset pill along the bottom or top edge. |
 
 ## Platform notes
 
@@ -109,7 +121,8 @@ npm install     # install dev dependencies (zero runtime dependencies)
 npm run dev     # watch build
 npm run build   # typecheck + production bundle -> main.js
 npm run typecheck
-npm test        # unit tests for the focal-point affine math (node:test)
+npm test        # unit & controller integration tests (node:test)
+npm run test:e2e # real Chromium mobile-touch & wheel E2E tests (Playwright)
 ```
 
 The test suite bundles the real `src/math/affine-focal.ts` and `src/input/gesture-guards.ts` with esbuild (aliasing the types-only `obsidian` package to a small stub) and verifies: focal-point invariance within 0.01 px across 1.0× → 3.0× → 1.0×, magnetic snap inside [0.96, 1.04] only, the 0.92 rubber-band floor, max-scale clamping, pan clamping (including `tx = ty = 0` at scale ≤ 1), focal anchoring through the production client-to-focal conversion on scrolled notes (scroll offsets 0 / −800 / −1500 / −3000, with centered-column margins), pan reach for long notes at 2× and 3× (including bounds taken from the scroller's full scroll extent), and the gesture decisions (the > 1.005 zoom gate, the any-direction one-finger pan claim, edge-start zones at both container edges, and the deliberate drawer-flick classification).

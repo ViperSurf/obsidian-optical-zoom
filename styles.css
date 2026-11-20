@@ -6,6 +6,14 @@
   touch-action: pan-x pan-y !important;
 }
 
+/* While optically zoomed, disable browser-native scroll claiming so 1-finger pans in all 4 directions never trigger touchcancel */
+.oz-zoom-host.oz-is-zoomed .markdown-preview-view,
+.oz-zoom-host.oz-is-zoomed .cm-scroller {
+  touch-action: none !important;
+  overscroll-behavior: none !important;
+  scroll-behavior: auto !important;
+}
+
 /* Promote to GPU layer strictly during active gesture so idle memory is 0% and settled vectors stay razor-sharp */
 .oz-gesturing {
   will-change: transform;
@@ -32,6 +40,23 @@
   will-change: transform;
 }
 
+.oz-loupe-lens.oz-loupe-circle {
+  border-radius: 50%;
+}
+
+@keyframes oz-snap-pulse-anim {
+  0% {
+    box-shadow: inset 0 0 0 2px var(--interactive-accent);
+  }
+  100% {
+    box-shadow: inset 0 0 0 2px transparent;
+  }
+}
+
+.oz-snap-pulse {
+  animation: oz-snap-pulse-anim 240ms ease-out;
+}
+
 .oz-loupe-clone {
   position: absolute !important;
   top: 0 !important;
@@ -53,8 +78,6 @@
 
 .oz-mobile-reset-pill {
   position: fixed;
-  bottom: 64px;
-  right: 16px;
   z-index: 9990;
   padding: 6px 12px;
   border-radius: 999px;
@@ -64,6 +87,44 @@
   color: var(--text-on-accent);
   background-color: var(--interactive-accent);
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.28);
+  transition: opacity 220ms ease;
+}
+
+.oz-mobile-reset-pill.oz-pos-bottom-center {
+  bottom: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.oz-mobile-reset-pill.oz-pos-bottom-right {
+  bottom: 64px;
+  right: 16px;
+}
+
+.oz-mobile-reset-pill.oz-pos-bottom-left {
+  bottom: 64px;
+  left: 16px;
+}
+
+.oz-mobile-reset-pill.oz-pos-top-center {
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.oz-mobile-reset-pill.oz-pos-top-right {
+  top: 56px;
+  right: 16px;
+}
+
+.oz-mobile-reset-pill.oz-pos-top-left {
+  top: 56px;
+  left: 16px;
+}
+
+.oz-faded {
+  opacity: 0 !important;
+  pointer-events: none;
 }
 
 .oz-hidden {

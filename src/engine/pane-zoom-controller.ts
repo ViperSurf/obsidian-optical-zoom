@@ -8,6 +8,7 @@ import {
   type PanBounds,
 } from '../math/affine-focal';
 import { CrossPlatformInputRecognizer } from '../input/input-recognizer';
+import { shouldShield } from '../input/gesture-guards';
 import type { AffineTransformState, OpticalZoomSettings, PinchGestureFrame } from '../types';
 
 export class PaneZoomController {
@@ -18,6 +19,9 @@ export class PaneZoomController {
     isGestureActive: false,
   };
 
+  private renderedTx = 0;
+  private renderedTy = 0;
+  private lastTargetEl: HTMLElement | null = null;
   private rafId: number | null = null;
   private settleTimer: number | null = null;
   private recognizer: CrossPlatformInputRecognizer | null = null;
@@ -26,7 +30,8 @@ export class PaneZoomController {
   constructor(
     public readonly leaf: WorkspaceLeaf,
     private readonly getSettings: () => OpticalZoomSettings,
-    private readonly onScaleChanged: (scale: number) => void
+    private readonly onScaleChanged: (scale: number) => void,
+    private readonly isZoomLocked: () => boolean = () => false
   ) {
     this.containerEl = (this.leaf.view as any).contentEl ?? this.leaf.view.containerEl;
     this.containerEl.classList.add('oz-zoom-host');
@@ -70,18 +75,17 @@ export class PaneZoomController {
   /**
    * Builds the pan-clamp geometry for the current DOM state.
    *
-   * Content size comes from the VIEWPORT scroller's scrollWidth /
-   * scrollHeight: by definition the full unscaled extent of the note —
-   * the same measure that makes native scrolling reach the whole note.
-   * The transformed sizer's offsetWidth/offsetHeight are NOT a
-   * trustworthy substitute in CM6 / Reading layouts (the resolved target
-   * can be a virtualized chunk whose layout size is only the rendered
-   * window), and clamping against them made pan travel run out mid-note:
-   * the page stopped partway up or to the left and only a zoom-out /
-   * zoom-in cycle let the user reach that side.
+   * Content size comes from the target's own local (untransformed) layout
+   * dimensions (`offsetWidth`/`offsetHeight` and `scrollWidth`/`scrollHeight`
+   * on the target itself). Unlike `viewport.scrollWidth`/`scrollHeight`, a
+   * transformed element's own layout/scroll dimensions are invariant to its
+   * own CSS `transform` — using `viewport.scrollWidth`/`scrollHeight` inflated
+   * `contentSize` by `scale` and shifted it with `tx`/`ty`, which caused the
+   * clamp to multiply by `scale` twice and shift bounds mid-pan.
    *
    * The origin offset is where the target's untransformed top-left corner
-   * sits relative to the viewport (its transformed rect backs out tx/ty).
+   * sits relative to the viewport (its transformed rect backs out the
+   * currently rendered `renderedTx`/`renderedTy`).
    */
   private resolvePanBounds(
     viewport: HTMLElement,
@@ -92,51 +96,104 @@ export class PaneZoomController {
     return {
       viewportWidth: viewportRect.width,
       viewportHeight: viewportRect.height,
-      contentWidth: viewport.scrollWidth,
-      contentHeight: viewport.scrollHeight,
-      originOffsetX: targetRect.left - this.state.tx - viewportRect.left,
-      originOffsetY: targetRect.top - this.state.ty - viewportRect.top,
+      contentWidth: Math.max(target.offsetWidth, target.scrollWidth),
+      contentHeight: Math.max(target.offsetHeight, target.scrollHeight),
+      originOffsetX: targetRect.left - this.renderedTx - viewportRect.left,
+      originOffsetY: targetRect.top - this.renderedTy - viewportRect.top,
     };
+  }
+
+  private syncZoomHostClass(): void {
+    this.containerEl.classList.toggle('oz-is-zoomed', shouldShield(this.state.scale));
   }
 
   private handlePinchFrame(frame: PinchGestureFrame): void {
     const dom = this.resolveDomTargets();
     if (!dom) return;
 
+    // If the user switched between Reading View and Live Preview while zoomed,
+    // reset stale state on the previous target before applying new frames.
+    if (this.lastTargetEl && this.lastTargetEl !== dom.target) {
+      this.lastTargetEl.style.transform = '';
+      this.lastTargetEl.style.transformOrigin = '';
+      this.lastTargetEl.classList.remove('oz-gesturing', 'oz-smooth-reset');
+      this.state = { scale: 1.0, tx: 0, ty: 0, isGestureActive: false };
+      this.renderedTx = 0;
+      this.renderedTy = 0;
+    }
+    this.lastTargetEl = dom.target;
+
     // The affine formula anchors at the focal point measured from the
     // target's *untransformed* origin. The transformed target's rect already
-    // includes the current translation, so focalPointFromClient backs it
-    // out. (Measuring from the viewport instead is off by the scroll offset
-    // and the centered-column margin, which made zoom slide vertically and
-    // horizontally away from the pinch spot.)
+    // includes the currently rendered translation, so focalPointFromClient
+    // backs out `renderedTx`/`renderedTy` (not pending `state.tx`/`state.ty`
+    // in case multiple frames arrive before rAF).
     const targetRect = dom.target.getBoundingClientRect();
     const { focalX, focalY } = focalPointFromClient(
       frame.focalClientX,
       frame.focalClientY,
       targetRect.left,
       targetRect.top,
-      this.state.tx,
-      this.state.ty
+      this.renderedTx,
+      this.renderedTy
     );
 
+    const bounds = this.resolvePanBounds(dom.viewport, dom.target, targetRect);
     const settings = this.getSettings();
+    const effectiveScaleDelta = this.isZoomLocked() ? 1.0 : frame.scaleDelta;
     this.state = computeFocalZoomTransform(
       this.state,
-      frame.scaleDelta,
+      effectiveScaleDelta,
       focalX,
       focalY,
       frame.panDeltaX,
       frame.panDeltaY,
       settings.minZoomScale,
       settings.maxZoomScale,
-      this.resolvePanBounds(dom.viewport, dom.target, targetRect)
+      bounds
     );
 
+    // Keep viewport.scrollTop centered on the *visible* unscaled content
+    // coordinate (y_center) rather than tracking screen-pixel ty. At 2x–3x
+    // zoom, clamping ty alone pushes scrollTop up to 3x further down the note
+    // than what is actually on screen, causing CM6 / Reading View to unload
+    // visible lines and tables (white screen on fast scrolls).
+    let scrollChanged = false;
+    if (this.state.scale > 1.0) {
+      const maxScrollTop = Math.max(0, bounds.contentHeight - bounds.viewportHeight);
+      const yCenter =
+        (bounds.viewportHeight / 2 - bounds.originOffsetY - this.state.ty) / this.state.scale;
+      const desiredScrollTop = Math.min(
+        maxScrollTop,
+        Math.max(0, yCenter - bounds.viewportHeight / 2)
+      );
+      if (Math.abs(desiredScrollTop - dom.viewport.scrollTop) >= 1) {
+        const prevScrollTop = dom.viewport.scrollTop;
+        // Use direct scrollTop assignment (with CSS scroll-behavior: auto !important)
+        // rather than scrollTo({ behavior: 'instant' }), which throws TypeError on
+        // older Android WebViews where 'instant' is not a valid ScrollBehavior enum.
+        dom.viewport.scrollTop = desiredScrollTop;
+        const actualDelta = dom.viewport.scrollTop - prevScrollTop;
+        if (actualDelta !== 0) {
+          this.state = { ...this.state, ty: this.state.ty + actualDelta };
+          scrollChanged = true;
+        }
+      }
+    }
+
+    this.syncZoomHostClass();
     dom.target.classList.add('oz-gesturing');
-    this.scheduleRender(dom.target);
+    if (scrollChanged) {
+      // Apply transform synchronously when scrollTop changed so there is zero 1-frame jump.
+      this.applyTransformToElement(dom.target);
+      this.onScaleChanged(this.state.scale);
+    } else {
+      this.scheduleRender(dom.target);
+    }
   }
 
   public stepZoomByFactor(multiplier: number): void {
+    if (this.isZoomLocked()) return;
     const dom = this.resolveDomTargets();
     if (!dom) return;
     const rect = dom.viewport.getBoundingClientRect();
@@ -151,10 +208,30 @@ export class PaneZoomController {
     this.scheduleGestureSettle();
   }
 
+  public setScale(targetScale: number): void {
+    const dom = this.resolveDomTargets();
+    const settings = this.getSettings();
+    const clamped = Math.min(settings.maxZoomScale, Math.max(settings.minZoomScale, targetScale));
+    if (Math.abs(clamped - 1.0) <= 0.005) {
+      this.resetZoom(false);
+      return;
+    }
+    this.lastTargetEl = dom?.target ?? null;
+    this.state = { scale: clamped, tx: 0, ty: 0, isGestureActive: false };
+    this.syncZoomHostClass();
+    if (dom) {
+      this.applyTransformToElement(dom.target);
+    }
+    this.onScaleChanged(clamped);
+  }
+
   public resetZoom(animate = true): void {
     const dom = this.resolveDomTargets();
     this.state = { scale: 1.0, tx: 0, ty: 0, isGestureActive: false };
+    this.syncZoomHostClass();
     if (!dom) {
+      this.renderedTx = 0;
+      this.renderedTy = 0;
       this.onScaleChanged(1.0);
       return;
     }
@@ -181,10 +258,14 @@ export class PaneZoomController {
     if (this.state.scale === 1.0 && this.state.tx === 0 && this.state.ty === 0) {
       target.style.transform = '';
       target.style.transformOrigin = '';
+      this.renderedTx = 0;
+      this.renderedTy = 0;
       return;
     }
     target.style.transformOrigin = '0 0';
     target.style.transform = `translate3d(${this.state.tx.toFixed(2)}px, ${this.state.ty.toFixed(2)}px, 0) scale(${this.state.scale.toFixed(4)})`;
+    this.renderedTx = this.state.tx;
+    this.renderedTy = this.state.ty;
   }
 
   private scheduleGestureSettle(): void {
@@ -196,6 +277,7 @@ export class PaneZoomController {
       const snapped = applyMagneticSnap(this.state);
       const didSnap = snapped.scale !== this.state.scale;
       this.state = snapped;
+      this.syncZoomHostClass();
 
       const dom = this.resolveDomTargets();
       if (dom) {
@@ -204,6 +286,13 @@ export class PaneZoomController {
         if (didSnap) {
           dom.target.classList.add('oz-smooth-reset');
           window.setTimeout(() => dom.target.classList.remove('oz-smooth-reset'), 130);
+          if (snapped.scale === 1.0 && this.getSettings().snapFeedback) {
+            if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+              navigator.vibrate(10);
+            }
+            dom.viewport.classList.add('oz-snap-pulse');
+            window.setTimeout(() => dom.viewport.classList.remove('oz-snap-pulse'), 240);
+          }
         }
         this.applyTransformToElement(dom.target);
       }
@@ -225,6 +314,7 @@ export class PaneZoomController {
       dom.target.style.transformOrigin = '';
       dom.target.classList.remove('oz-gesturing', 'oz-smooth-reset');
     }
-    this.containerEl.classList.remove('oz-zoom-host');
+    this.lastTargetEl = null;
+    this.containerEl.classList.remove('oz-zoom-host', 'oz-is-zoomed');
   }
 }

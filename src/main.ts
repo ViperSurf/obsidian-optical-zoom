@@ -13,15 +13,27 @@ export default class OpticalZoomPlugin extends Plugin {
   private trackedLeaves = new Set<WorkspaceLeaf>();
   private loupeController: OpticalLoupeController | null = null;
   private statusIndicator: ZoomStatusIndicator | null = null;
+  private zoomLocked = false;
+  private noteZoomSaveTimer: number | null = null;
 
   async onload(): Promise<void> {
     await this.loadSettings();
 
     // Status Bar Pill (Desktop) or Floating Corner Reset Pill (Mobile)
     const statusBarItem = !IS_MOBILE ? this.addStatusBarItem() : null;
-    this.statusIndicator = new ZoomStatusIndicator(statusBarItem, () => {
-      this.getActiveController()?.resetZoom(true);
-    });
+    this.statusIndicator = new ZoomStatusIndicator(
+      statusBarItem,
+      () => this.settings,
+      () => {
+        if (this.zoomLocked) {
+          this.zoomLocked = false;
+          this.statusIndicator?.refresh();
+          return;
+        }
+        this.getActiveController()?.resetZoom(true);
+      },
+      () => this.zoomLocked
+    );
 
     // Global Optical Loupe Controller. It receives the active pane's
     // optical scale so it can refuse to activate while zoomed (a held
@@ -47,10 +59,35 @@ export default class OpticalZoomPlugin extends Plugin {
         this.syncWorkspaceLeaves();
         if (leaf) {
           const ctrl = this.controllers.get(leaf);
-          if (ctrl && !this.settings.rememberZoomPerTab && ctrl.getScale() !== 1.0) {
-            ctrl.resetZoom(false);
+          const filePath = (leaf.view as any)?.file?.path as string | undefined;
+          if (ctrl) {
+            if (this.settings.rememberZoomPerNote && filePath) {
+              const saved = this.settings.savedNoteZooms[filePath];
+              if (typeof saved === 'number' && saved > 1.005) {
+                ctrl.setScale(saved);
+              } else if (!this.settings.rememberZoomPerTab && ctrl.getScale() !== 1.0) {
+                ctrl.resetZoom(false);
+              }
+            } else if (!this.settings.rememberZoomPerTab && ctrl.getScale() !== 1.0) {
+              ctrl.resetZoom(false);
+            }
           }
           this.statusIndicator?.update(ctrl?.getScale() ?? 1.0);
+        }
+      })
+    );
+
+    this.registerEvent(
+      this.app.workspace.on('file-open', (file) => {
+        if (!file || !this.settings.rememberZoomPerNote) return;
+        const activeLeaf = this.app.workspace.getMostRecentLeaf();
+        const ctrl = activeLeaf ? this.controllers.get(activeLeaf) : null;
+        if (!ctrl) return;
+        const saved = this.settings.savedNoteZooms[file.path];
+        if (typeof saved === 'number' && saved > 1.005) {
+          ctrl.setScale(saved);
+        } else if (ctrl.getScale() !== 1.0) {
+          ctrl.resetZoom(false);
         }
       })
     );
@@ -65,24 +102,56 @@ export default class OpticalZoomPlugin extends Plugin {
 
     this.addCommand({
       id: 'optical-zoom-in',
-      name: 'Optical zoom in (+25%)',
+      name: 'Optical zoom in',
       hotkeys: [{ modifiers: ['Mod', 'Shift'], key: '=' }],
-      callback: () => this.getActiveController()?.stepZoomByFactor(1.25),
+      callback: () => {
+        const factor = 1 + this.settings.hotkeyZoomStepPercent / 100;
+        this.getActiveController()?.stepZoomByFactor(factor);
+      },
     });
 
     this.addCommand({
       id: 'optical-zoom-out',
-      name: 'Optical zoom out (-20%)',
+      name: 'Optical zoom out',
       hotkeys: [{ modifiers: ['Mod', 'Shift'], key: '-' }],
-      callback: () => this.getActiveController()?.stepZoomByFactor(0.8),
+      callback: () => {
+        const factor = 1 + this.settings.hotkeyZoomStepPercent / 100;
+        this.getActiveController()?.stepZoomByFactor(1 / factor);
+      },
+    });
+
+    this.addCommand({
+      id: 'toggle-loupe',
+      name: 'Toggle magnifying loupe',
+      callback: () => this.loupeController?.toggleLoupeAtCursor(),
+    });
+
+    this.addCommand({
+      id: 'toggle-zoom-lock',
+      name: 'Toggle zoom lock',
+      callback: () => {
+        this.zoomLocked = !this.zoomLocked;
+        this.statusIndicator?.refresh();
+      },
     });
 
     this.addSettingTab(new OpticalZoomSettingTab(this.app, this));
+
+    // Optional Escape-to-reset when zoomed and no modal/loupe is active
+    this.registerDomEvent(window, 'keydown', (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || !this.settings.resetOnEscape) return;
+      if (document.querySelector('.modal-container, .oz-loupe-lens')) return;
+      const ctrl = this.getActiveController();
+      if (ctrl && ctrl.getScale() > 1.005) {
+        ctrl.resetZoom(true);
+      }
+    });
   }
 
   private syncWorkspaceLeaves(): void {
     const activeLeaves = new Set<WorkspaceLeaf>();
 
+    // Only attach to MarkdownView so Canvas, PDF, and Excalidraw keep their own native zoom.
     this.app.workspace.iterateAllLeaves((leaf) => {
       if (leaf.view instanceof MarkdownView) {
         activeLeaves.add(leaf);
@@ -94,7 +163,14 @@ export default class OpticalZoomPlugin extends Plugin {
               if (this.app.workspace.getMostRecentLeaf() === leaf) {
                 this.statusIndicator?.update(scale);
               }
-            }
+              if (this.settings.rememberZoomPerNote) {
+                const filePath = (leaf.view as any)?.file?.path as string | undefined;
+                if (filePath) {
+                  this.scheduleSaveNoteZoom(filePath, scale);
+                }
+              }
+            },
+            () => this.zoomLocked
           );
           this.controllers.set(leaf, controller);
           this.trackedLeaves.add(leaf);
@@ -102,7 +178,7 @@ export default class OpticalZoomPlugin extends Plugin {
       }
     });
 
-    // Clean up detached leaves to prevent memory leaks
+    // Clean up detached or no-longer-eligible leaves to prevent memory leaks
     for (const tracked of Array.from(this.trackedLeaves)) {
       if (!activeLeaves.has(tracked)) {
         this.controllers.get(tracked)?.destroy();
@@ -118,7 +194,25 @@ export default class OpticalZoomPlugin extends Plugin {
     return this.controllers.get(activeLeaf) ?? null;
   }
 
+  private scheduleSaveNoteZoom(filePath: string, scale: number): void {
+    if (Math.abs(scale - 1.0) <= 0.005) {
+      delete this.settings.savedNoteZooms[filePath];
+    } else {
+      this.settings.savedNoteZooms[filePath] = Number(scale.toFixed(3));
+    }
+    if (this.noteZoomSaveTimer !== null) {
+      window.clearTimeout(this.noteZoomSaveTimer);
+    }
+    this.noteZoomSaveTimer = window.setTimeout(() => {
+      this.noteZoomSaveTimer = null;
+      void this.saveData(this.settings);
+    }, 400);
+  }
+
   onunload(): void {
+    if (this.noteZoomSaveTimer !== null) {
+      window.clearTimeout(this.noteZoomSaveTimer);
+    }
     for (const leaf of Array.from(this.trackedLeaves)) {
       this.controllers.get(leaf)?.destroy();
     }
@@ -133,5 +227,7 @@ export default class OpticalZoomPlugin extends Plugin {
 
   async saveSettings(): Promise<void> {
     await this.saveData(this.settings);
+    this.syncWorkspaceLeaves();
+    this.statusIndicator?.refresh();
   }
 }

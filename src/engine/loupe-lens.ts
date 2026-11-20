@@ -15,6 +15,7 @@ export class OpticalLoupeController {
   private sourceScrollLeft = 0;
   private longPressTimer: number | null = null;
   private activeTouchId: number | null = null;
+  private isToggledMode = false;
 
   constructor(
     private readonly getSettings: () => OpticalZoomSettings,
@@ -52,21 +53,39 @@ export class OpticalLoupeController {
   }
 
   private handleKeyDown = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && this.isActive && this.isToggledMode) {
+      this.deactivateLoupe();
+      return;
+    }
     if (IS_MOBILE || !this.isLoupeEnabled()) return;
     const requiredKey = this.getSettings().desktopLoupeKey;
     if (requiredKey === 'Disabled') return;
 
     if (e.key === requiredKey && !this.isActive) {
+      this.isToggledMode = false;
       this.activateLoupe(this.lastPointerX, this.lastPointerY, false);
     }
   };
 
   private handleKeyUp = (e: KeyboardEvent): void => {
+    if (this.isToggledMode) return;
     const requiredKey = this.getSettings().desktopLoupeKey;
     if (e.key === requiredKey && this.isActive) {
       this.deactivateLoupe();
     }
   };
+
+  public toggleLoupeAtCursor(): void {
+    if (!this.isLoupeEnabled()) return;
+    if (this.isActive) {
+      this.deactivateLoupe();
+      return;
+    }
+    const x = this.lastPointerX || window.innerWidth / 2;
+    const y = this.lastPointerY || window.innerHeight / 2;
+    this.isToggledMode = true;
+    this.activateLoupe(x, y, false);
+  }
 
   private handlePointerMove = (e: PointerEvent): void => {
     if (e.pointerType === 'touch') return;
@@ -166,7 +185,8 @@ export class OpticalLoupeController {
 
     // Build lens container
     this.lensEl = document.createElement('div');
-    this.lensEl.className = 'oz-loupe-lens';
+    this.lensEl.className =
+      settings.loupeShape === 'circle' ? 'oz-loupe-lens oz-loupe-circle' : 'oz-loupe-lens';
     this.lensEl.style.width = `${size}px`;
     this.lensEl.style.height = `${size}px`;
 
@@ -261,6 +281,7 @@ export class OpticalLoupeController {
     this.sourceScrollTop = 0;
     this.sourceScrollLeft = 0;
     this.isActive = false;
+    this.isToggledMode = false;
   };
 
   public destroy(): void {

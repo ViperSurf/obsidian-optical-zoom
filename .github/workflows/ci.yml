@@ -19,5 +19,9 @@ jobs:
         run: npm run typecheck
       - name: Test
         run: npm test
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+      - name: E2E Mobile Touch Tests
+        run: npm run test:e2e
       - name: Build
         run: npm run build

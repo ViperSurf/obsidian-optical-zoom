@@ -42,12 +42,19 @@ await esbuild.build({
   outfile: path.join(outdir, 'gesture-guards.mjs'),
 });
 
+await esbuild.build({
+  ...bundleOpts,
+  entryPoints: [path.join(here, '..', 'src', 'engine', 'pane-zoom-controller.ts')],
+  outfile: path.join(outdir, 'pane-zoom-controller.mjs'),
+});
+
 const result = spawnSync(
   process.execPath,
   [
     '--test',
     path.join(here, 'affine-focal.test.mjs'),
     path.join(here, 'gesture-guards.test.mjs'),
+    path.join(here, 'pane-controller.test.mjs'),
   ],
   { stdio: 'inherit' }
 );

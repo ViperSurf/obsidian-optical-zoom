@@ -42,12 +42,18 @@ interface SingleTouchPan {
 export class CrossPlatformInputRecognizer {
   private activePointers: Map<number, PointerSample> = new Map();
   private prevPinchDistance: number | null = null;
+  private pinchStartDistance: number | null = null;
+  private pinchScaleUnlocked = false;
   private prevCentroid: { x: number; y: number } | null = null;
   private lastWebKitGestureScale = 1.0;
   private lastTwoFingerTapEpoch = 0;
   private twoFingerTouchStartEpoch = 0;
   private isWebKitGestureRunning = false;
   private singleTouchPan: SingleTouchPan | null = null;
+  private panVelX = 0;
+  private panVelY = 0;
+  private lastPanMoveEpoch = 0;
+  private momentumRafId: number | null = null;
 
   constructor(
     private readonly container: HTMLElement,
@@ -75,14 +81,6 @@ export class CrossPlatformInputRecognizer {
     // preventDefault() never reaches — so pinch shielding and the
     // one-finger zoom pan have to happen here, on the container, before
     // the events bubble up to the workspace.
-    // Capture phase first: while zoomed, touchmoves are stopped from the
-    // very first pixel, before any workspace handler can latch onto them
-    // (see the capture handler). Touchstarts are deliberately NOT stopped:
-    // Obsidian's drawer gesture tracks from touchstart, and a fast inward
-    // flick from the very edge must remain able to open a drawer on
-    // purpose while zoomed. Edge touchstarts are classified on the move
-    // instead (see handleTouchMove).
-    this.container.addEventListener('touchmove', this.handleTouchMoveCapture, { capture: true, passive: true });
     this.container.addEventListener('touchstart', this.handleTouchStart, { passive: false });
     this.container.addEventListener('touchmove', this.handleTouchMove, { passive: false });
     this.container.addEventListener('touchend', this.handleTouchEndOrCancel, { passive: true });
@@ -129,9 +127,10 @@ export class CrossPlatformInputRecognizer {
       return;
     }
 
-    // Case B: Two-finger horizontal/vertical trackpad pan while zoomed in (> 1.0x)
-    if (shouldShield(this.getCurrentScale()) && e.deltaX !== 0) {
+    // Case B: Two-finger trackpad / mouse-wheel pan while zoomed in (> 1.0x)
+    if (shouldShield(this.getCurrentScale()) && (e.deltaX !== 0 || e.deltaY !== 0)) {
       e.preventDefault();
+      e.stopPropagation();
       this.onFrame({
         scaleDelta: 1.0,
         panDeltaX: -e.deltaX,
@@ -153,9 +152,13 @@ export class CrossPlatformInputRecognizer {
     });
 
     if (this.activePointers.size === 2) {
+      this.stopMomentum();
       this.twoFingerTouchStartEpoch = performance.now();
       const pts = Array.from(this.activePointers.values());
-      this.prevPinchDistance = Math.hypot(pts[1].clientX - pts[0].clientX, pts[1].clientY - pts[0].clientY);
+      const dist = Math.hypot(pts[1].clientX - pts[0].clientX, pts[1].clientY - pts[0].clientY);
+      this.prevPinchDistance = dist;
+      this.pinchStartDistance = dist;
+      this.pinchScaleUnlocked = !this.getSettings().pinchJitterFilter;
       this.prevCentroid = {
         x: (pts[0].clientX + pts[1].clientX) / 2,
         y: (pts[0].clientY + pts[1].clientY) / 2,
@@ -184,7 +187,18 @@ export class CrossPlatformInputRecognizer {
       };
 
       if (dist > 8) {
-        const rawRatio = dist / this.prevPinchDistance;
+        if (!this.pinchScaleUnlocked && this.pinchStartDistance !== null) {
+          if (Math.abs(dist - this.pinchStartDistance) >= 12) {
+            this.pinchScaleUnlocked = true;
+            this.prevPinchDistance = dist;
+          }
+        }
+
+        const rawRatio =
+          this.pinchScaleUnlocked &&
+          (!settings.pinchJitterFilter || Math.abs(dist - this.prevPinchDistance) >= 1.5)
+            ? dist / this.prevPinchDistance
+            : 1.0;
         const adjustedRatio = 1 + (rawRatio - 1) * settings.zoomSensitivity;
         const panDX = centroid.x - this.prevCentroid.x;
         const panDY = centroid.y - this.prevCentroid.y;
@@ -198,7 +212,9 @@ export class CrossPlatformInputRecognizer {
           source: 'pointer',
         });
 
-        this.prevPinchDistance = dist;
+        if (rawRatio !== 1.0) {
+          this.prevPinchDistance = dist;
+        }
         this.prevCentroid = centroid;
       }
     }
@@ -221,60 +237,77 @@ export class CrossPlatformInputRecognizer {
         }
       }
       this.prevPinchDistance = null;
+      this.pinchStartDistance = null;
+      this.pinchScaleUnlocked = false;
       this.prevCentroid = null;
       this.onGestureEnd();
     }
   };
 
-  private handleTouchMoveCapture = (e: TouchEvent): void => {
-    if (this.getSettings().interactionMode === 'loupe-only') return;
-    // A pinch must never reach workspace handlers from the first pixel.
-    if (e.touches.length >= 2) {
-      e.stopPropagation();
+  private initSingleTouchPan(t: Touch): void {
+    const rect = this.container.getBoundingClientRect();
+    const edgeInfo = edgeStartInfo(t.clientX, rect.left, rect.width, DRAWER_FLICK_EDGE_PX);
+    this.singleTouchPan = {
+      id: t.identifier,
+      startX: t.clientX,
+      startY: t.clientY,
+      lastX: t.clientX,
+      lastY: t.clientY,
+      startEpoch: performance.now(),
+      claimed: false,
+      edge: edgeInfo?.edge ?? null,
+      edgeOffset: edgeInfo?.offsetFromEdge ?? 0,
+      edgeResolved: edgeInfo === null,
+      drawerPassThrough: false,
+    };
+  }
+
+  private stopMomentum(): void {
+    if (this.momentumRafId !== null) {
+      window.cancelAnimationFrame(this.momentumRafId);
+      this.momentumRafId = null;
+    }
+    this.panVelX = 0;
+    this.panVelY = 0;
+  }
+
+  private startMomentum(lastClientX: number, lastClientY: number): void {
+    let vx = this.panVelX;
+    let vy = this.panVelY;
+    if (Math.hypot(vx, vy) < 1.5) {
+      this.onGestureEnd();
       return;
     }
-    // While zoomed, a one-finger drag is stopped from the very first move,
-    // whatever its direction. stopPropagation does NOT affect native
-    // scrolling (only preventDefault does); the bubble-phase handler
-    // below preventDefaults once the drag is claimed as a two-axis pan,
-    // which is what hands vertical movement to the transform as well.
-    // EXCEPTION: a touch that started in the edge flick zone is left
-    // unshielded until the bubble-phase handler classifies it — shielding
-    // it here would starve Obsidian's drawer gesture of the very moves it
-    // needs to recognize a deliberate flick — and a touch already
-    // classified as a drawer flick is never shielded at all.
-    if (e.touches.length === 1 && shouldShield(this.getCurrentScale())) {
-      const pan = this.singleTouchPan;
-      if (pan && (pan.drawerPassThrough || (pan.edge !== null && !pan.edgeResolved))) {
+    const step = () => {
+      vx *= 0.9;
+      vy *= 0.9;
+      if (Math.hypot(vx, vy) < 0.5 || !shouldShield(this.getCurrentScale())) {
+        this.momentumRafId = null;
+        this.onGestureEnd();
         return;
       }
-      e.stopPropagation();
-    }
-  };
+      this.onFrame({
+        scaleDelta: 1.0,
+        panDeltaX: vx,
+        panDeltaY: vy,
+        focalClientX: lastClientX,
+        focalClientY: lastClientY,
+        source: 'pointer',
+      });
+      this.momentumRafId = window.requestAnimationFrame(step);
+    };
+    this.momentumRafId = window.requestAnimationFrame(step);
+  }
 
   private handleTouchStart = (e: TouchEvent): void => {
+    this.stopMomentum();
     // Bubble phase records the touch for pan tracking. Nothing stops
     // touchstarts from propagating — at 100% the loupe controller at
     // window level sees every one (in particular a second finger landing,
     // which cancels its long-press), and while zoomed Obsidian's drawer
     // gesture must see edge touchstarts so a deliberate flick can work.
     if (e.touches.length === 1) {
-      const t = e.touches[0];
-      const rect = this.container.getBoundingClientRect();
-      const edgeInfo = edgeStartInfo(t.clientX, rect.left, rect.width, DRAWER_FLICK_EDGE_PX);
-      this.singleTouchPan = {
-        id: t.identifier,
-        startX: t.clientX,
-        startY: t.clientY,
-        lastX: t.clientX,
-        lastY: t.clientY,
-        startEpoch: performance.now(),
-        claimed: false,
-        edge: edgeInfo?.edge ?? null,
-        edgeOffset: edgeInfo?.offsetFromEdge ?? 0,
-        edgeResolved: edgeInfo === null,
-        drawerPassThrough: false,
-      };
+      this.initSingleTouchPan(e.touches[0]);
     } else {
       // A second finger supersedes any pending one-finger pan; the pinch
       // path (pointer events) takes over from here.
@@ -351,17 +384,12 @@ export class CrossPlatformInputRecognizer {
     }
 
     if (!pan.claimed) {
-      // Markor model: while zoomed, a one-finger drag past the threshold
-      // is claimed as a full two-axis pan WHATEVER its direction — there
-      // is no rejection path. The old direction classifier locked each
-      // touch to a single fate (horizontal pan OR native vertical scroll),
-      // so diagonal up/left drags were claimed or rejected inconsistently,
-      // and a rejected drag could not move horizontally at all (the editor
-      // has no native horizontal scroll), which read as "can't move up or
-      // left". The 6px threshold matches the loupe's own move-to-cancel
-      // distance, so claiming a pan and cancelling a pending loupe never
-      // fight over the same gesture. classifyOneFingerDrag also re-checks
-      // the zoom gate, so at 100% this never claims.
+      // For mid-pane touches while zoomed, prevent native scroll/overscroll
+      // and shield from workspace drawers immediately on the first touchmove.
+      if (pan.edge === null || pan.edgeResolved) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
       if (
         classifyOneFingerDrag(dxTotal, dyTotal, TOUCH_CLAIM_THRESHOLD_PX, this.getCurrentScale()) !== 'pan'
       ) {
@@ -381,6 +409,18 @@ export class CrossPlatformInputRecognizer {
     // nothing of ours needs these events at window level.)
     e.preventDefault();
     e.stopPropagation();
+    const now = performance.now();
+    const dt = now - this.lastPanMoveEpoch;
+    if (dt > 0 && dt < 80) {
+      // Exponentially smoothed per-frame (~16ms) velocity for optional momentum
+      const scaleToFrame = 16 / Math.max(4, dt);
+      this.panVelX = this.panVelX * 0.4 + stepDX * scaleToFrame * 0.6;
+      this.panVelY = this.panVelY * 0.4 + stepDY * scaleToFrame * 0.6;
+    } else {
+      this.panVelX = stepDX;
+      this.panVelY = stepDY;
+    }
+    this.lastPanMoveEpoch = now;
     this.onFrame({
       scaleDelta: 1.0,
       panDeltaX: stepDX,
@@ -393,13 +433,29 @@ export class CrossPlatformInputRecognizer {
 
   private handleTouchEndOrCancel = (e: TouchEvent): void => {
     const wasClaimed = this.singleTouchPan?.claimed ?? false;
+    const lastX = this.singleTouchPan?.lastX ?? 0;
+    const lastY = this.singleTouchPan?.lastY ?? 0;
+    if (e.touches.length === 1 && shouldShield(this.getCurrentScale())) {
+      // Seamless 2-finger-to-1-finger transition: allow the remaining finger
+      // to keep panning immediately after a pinch without lifting both fingers.
+      this.initSingleTouchPan(e.touches[0]);
+      if (this.singleTouchPan) {
+        this.singleTouchPan.edgeResolved = true;
+      }
+      return;
+    }
     if (e.touches.length === 0) {
       this.singleTouchPan = null;
     }
     // Never stopPropagation: the loupe controller clears its own state on
     // touchend at window level.
     if (wasClaimed && e.touches.length === 0) {
-      this.onGestureEnd();
+      const recent = performance.now() - this.lastPanMoveEpoch < 60;
+      if (this.getSettings().panMomentum && recent && e.type !== 'touchcancel') {
+        this.startMomentum(lastX, lastY);
+      } else {
+        this.onGestureEnd();
+      }
     }
   };
 
@@ -436,12 +492,12 @@ export class CrossPlatformInputRecognizer {
   };
 
   public destroy(): void {
+    this.stopMomentum();
     this.container.removeEventListener('wheel', this.handleWheel);
     this.container.removeEventListener('pointerdown', this.handlePointerDown);
     this.container.removeEventListener('pointermove', this.handlePointerMove);
     this.container.removeEventListener('pointerup', this.handlePointerUpOrCancel);
     this.container.removeEventListener('pointercancel', this.handlePointerUpOrCancel);
-    this.container.removeEventListener('touchmove', this.handleTouchMoveCapture, true);
     this.container.removeEventListener('touchstart', this.handleTouchStart);
     this.container.removeEventListener('touchmove', this.handleTouchMove);
     this.container.removeEventListener('touchend', this.handleTouchEndOrCancel);

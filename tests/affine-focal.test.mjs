@@ -325,4 +325,21 @@ describe('computeFocalZoomTransform — pan bounds from the scroller scroll exte
       assert.ok(bounds.originOffsetY + s.ty + s.scale * bounds.contentHeight >= bounds.viewportHeight);
     }
   });
+
+  it('allows panning all the way up and left when scrolled down inside a centered column', () => {
+    const scrolledBounds = {
+      viewportWidth: 1000,
+      viewportHeight: 800,
+      contentWidth: 720,
+      contentHeight: 6000,
+      originOffsetX: 140,
+      originOffsetY: -1500,
+    };
+    const zoomed = { scale: 2.0, tx: -300, ty: -2000, isGestureActive: true };
+    const upLeft = computeFocalZoomTransform(zoomed, 1.0, 500, 400, 5000, 5000, MIN, MAX, scrolledBounds);
+    assert.equal(upLeft.tx, -140);
+    assert.equal(upLeft.ty, 1500);
+    assert.equal(scrolledBounds.originOffsetX + upLeft.tx, 0);
+    assert.equal(scrolledBounds.originOffsetY + upLeft.ty, 0);
+  });
 });
