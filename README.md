@@ -11,6 +11,20 @@ Obsidian's built-in zoom changes font size and reflows text. This plugin instead
 
 Works on **Windows, Linux, macOS, Android, and iOS/iPadOS** (`isDesktopOnly: false`).
 
+## Demo & Screenshots
+
+![Optical Zoom + Loupe Demo](assets/optical-zoom-demo.webp)
+
+*(Also available as [WebM video](assets/optical-zoom-demo.webm).)*
+
+| Desktop Optical Zoom (300%) | Hold-to-Loupe Magnifier |
+| --- | --- |
+| ![Desktop Optical Zoom](assets/desktop-zoom.webp) | ![Hold-to-Loupe Magnifier](assets/loupe-magnifier.webp) |
+
+| Mobile Touch Zoom | Settings (General & Loupe) | Settings (Triggers & Indicator) |
+| --- | --- | --- |
+| ![Mobile Touch Zoom](assets/mobile-zoom.webp) | ![Settings Tab](assets/settings-tab.webp) | ![Settings Tab (More)](assets/settings-tab-2.webp) |
+
 ## Features
 
 - **Pinch-to-zoom around the focal point** — the exact character, formula, or pixel under your fingers/cursor stays put while everything scales around it (focal-point affine math, verified by unit tests).
@@ -129,7 +143,7 @@ The test suite bundles the real `src/math/affine-focal.ts` and `src/input/gestur
 
 ### Releasing
 
-Tag a version (e.g. `git tag v1.2.0 && git push origin v1.2.0`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required loose by the Obsidian community store / BRAT) plus `optical-zoom.zip`, a ready-to-unzip folder for manual installs.
+Tag a version matching `manifest.json`'s `version` **without a `v` prefix** (e.g. `git tag 1.5.1 && git push origin 1.5.1`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required loose by the Obsidian community store / BRAT) plus `optical-zoom.zip`, a ready-to-unzip folder for manual installs.
 
 ## License
 

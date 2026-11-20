@@ -302,7 +302,7 @@ describe('Mobile WebView E2E — Long Note + Real Zoom Gestures', () => {
     const { port } = server.address();
     baseUrl = `http://127.0.0.1:${port}`;
 
-    browser = await chromium.launch({ headless: false });
+    browser = await chromium.launch({ headless: process.env.HEADLESS !== 'false' });
     context = await browser.newContext({
       viewport: { width: 390, height: 844 },
       hasTouch: true,
