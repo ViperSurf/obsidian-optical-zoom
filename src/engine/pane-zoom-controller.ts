@@ -11,6 +11,25 @@ import { CrossPlatformInputRecognizer } from '../input/input-recognizer';
 import { shouldShield } from '../input/gesture-guards';
 import type { AffineTransformState, OpticalZoomSettings, PinchGestureFrame } from '../types';
 
+function clearTransformProps(el: HTMLElement): void {
+  if (typeof el.setCssProps === 'function') {
+    el.setCssProps({ transform: '', 'transform-origin': '' });
+  } else if (typeof el.style.removeProperty === 'function') {
+    el.style.removeProperty('transform');
+    el.style.removeProperty('transform-origin');
+  } else {
+    el.style.cssText = '';
+  }
+}
+
+function setTransformOriginZero(el: HTMLElement): void {
+  if (typeof el.setCssProps === 'function') {
+    el.setCssProps({ 'transform-origin': '0 0' });
+  } else if (typeof el.style.setProperty === 'function') {
+    el.style.setProperty('transform-origin', '0 0');
+  }
+}
+
 export class PaneZoomController {
   private state: AffineTransformState = {
     scale: 1.0,
@@ -114,8 +133,7 @@ export class PaneZoomController {
     // If the user switched between Reading View and Live Preview while zoomed,
     // reset stale state on the previous target before applying new frames.
     if (this.lastTargetEl && this.lastTargetEl !== dom.target) {
-      this.lastTargetEl.style.transform = '';
-      this.lastTargetEl.style.transformOrigin = '';
+      clearTransformProps(this.lastTargetEl);
       this.lastTargetEl.classList.remove('oz-gesturing', 'oz-smooth-reset');
       this.state = { scale: 1.0, tx: 0, ty: 0, isGestureActive: false };
       this.renderedTx = 0;
@@ -256,13 +274,12 @@ export class PaneZoomController {
 
   private applyTransformToElement(target: HTMLElement): void {
     if (this.state.scale === 1.0 && this.state.tx === 0 && this.state.ty === 0) {
-      target.style.transform = '';
-      target.style.transformOrigin = '';
+      clearTransformProps(target);
       this.renderedTx = 0;
       this.renderedTy = 0;
       return;
     }
-    target.style.transformOrigin = '0 0';
+    setTransformOriginZero(target);
     target.style.transform = `translate3d(${this.state.tx.toFixed(2)}px, ${this.state.ty.toFixed(2)}px, 0) scale(${this.state.scale.toFixed(4)})`;
     this.renderedTx = this.state.tx;
     this.renderedTy = this.state.ty;
@@ -310,8 +327,7 @@ export class PaneZoomController {
     this.recognizer?.destroy();
     const dom = this.resolveDomTargets();
     if (dom) {
-      dom.target.style.transform = '';
-      dom.target.style.transformOrigin = '';
+      clearTransformProps(dom.target);
       dom.target.classList.remove('oz-gesturing', 'oz-smooth-reset');
     }
     this.lastTargetEl = null;

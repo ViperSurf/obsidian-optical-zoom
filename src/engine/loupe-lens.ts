@@ -195,15 +195,14 @@ export class OpticalLoupeController {
     clonedPane.className = `${targetPane.className} oz-loupe-clone`;
     clonedPane.style.width = `${this.sourceRect.width}px`;
     clonedPane.style.height = `${this.sourceRect.height}px`;
-    clonedPane.style.overflow = 'hidden';
 
     // Neutralize any optical-zoom transform carried by the cloned inner
     // sizer — the loupe magnifies the clean content with its own scale.
     clonedPane
       .querySelectorAll<HTMLElement>('.cm-sizer, .markdown-preview-sizer')
       .forEach((sizer) => {
-        sizer.style.transform = '';
-        sizer.style.transformOrigin = '';
+        sizer.style.removeProperty('transform');
+        sizer.style.removeProperty('transform-origin');
       });
 
     // Copy any canvas bitmaps (e.g., Excalidraw/charts) once on activation
@@ -261,7 +260,6 @@ export class OpticalLoupeController {
       const innerTx = half - relX * mag;
       const innerTy = half - relY * mag;
 
-      this.cloneViewportEl.style.transformOrigin = '0 0';
       this.cloneViewportEl.style.transform = `translate3d(${innerTx.toFixed(1)}px, ${innerTy.toFixed(1)}px, 0) scale(${mag})`;
     });
   }

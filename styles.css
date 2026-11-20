@@ -63,6 +63,13 @@
   left: 0 !important;
   margin: 0 !important;
   pointer-events: none !important;
+  overflow: hidden;
+  transform-origin: 0 0;
+}
+
+.oz-loupe-clone .cm-sizer,
+.oz-loupe-clone .markdown-preview-sizer {
+  transform: none !important;
 }
 
 /* Desktop Status Bar Pill & Mobile Floating Reset Pill */

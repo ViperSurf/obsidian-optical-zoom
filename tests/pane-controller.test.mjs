@@ -62,7 +62,19 @@ function makeMockElement({ width = 1000, height = 800, contentWidth = 720, conte
 
   const el = {
     classList: new MockClassList(),
-    style: { transform: '', transformOrigin: '', display: '' },
+    style: {
+      transform: '',
+      transformOrigin: '',
+      display: '',
+      setProperty(k, v) {
+        if (k === 'transform-origin') this.transformOrigin = v;
+        else this[k] = v;
+      },
+      removeProperty(k) {
+        if (k === 'transform-origin') this.transformOrigin = '';
+        else this[k] = '';
+      },
+    },
     offsetWidth: contentWidth,
     offsetHeight: contentHeight,
     scrollWidth: contentWidth,
