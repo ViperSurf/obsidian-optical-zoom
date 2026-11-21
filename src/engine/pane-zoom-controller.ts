@@ -12,22 +12,13 @@ import { shouldShield } from '../input/gesture-guards';
 import type { AffineTransformState, OpticalZoomSettings, PinchGestureFrame } from '../types';
 
 function clearTransformProps(el: HTMLElement): void {
-  if (typeof el.setCssProps === 'function') {
-    el.setCssProps({ transform: '', 'transform-origin': '' });
-  } else if (typeof el.style.removeProperty === 'function') {
-    el.style.removeProperty('transform');
-    el.style.removeProperty('transform-origin');
-  } else {
-    el.style.cssText = '';
-  }
+  el.style.removeProperty('transform');
+  el.style.removeProperty('transform-origin');
+  el.classList.remove('oz-zoom-target');
 }
 
 function setTransformOriginZero(el: HTMLElement): void {
-  if (typeof el.setCssProps === 'function') {
-    el.setCssProps({ 'transform-origin': '0 0' });
-  } else if (typeof el.style.setProperty === 'function') {
-    el.style.setProperty('transform-origin', '0 0');
-  }
+  el.classList.add('oz-zoom-target');
 }
 
 export class PaneZoomController {
@@ -52,7 +43,8 @@ export class PaneZoomController {
     private readonly onScaleChanged: (scale: number) => void,
     private readonly isZoomLocked: () => boolean = () => false
   ) {
-    this.containerEl = (this.leaf.view as any).contentEl ?? this.leaf.view.containerEl;
+    this.containerEl =
+      (this.leaf.view as { contentEl?: HTMLElement }).contentEl ?? this.leaf.view.containerEl;
     this.containerEl.classList.add('oz-zoom-host');
 
     this.recognizer = new CrossPlatformInputRecognizer(

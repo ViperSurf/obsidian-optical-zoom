@@ -59,7 +59,7 @@ export default class OpticalZoomPlugin extends Plugin {
         this.syncWorkspaceLeaves();
         if (leaf) {
           const ctrl = this.controllers.get(leaf);
-          const filePath = (leaf.view as any)?.file?.path as string | undefined;
+          const filePath = (leaf.view as { file?: { path?: string } | null })?.file?.path;
           if (ctrl) {
             if (this.settings.rememberZoomPerNote && filePath) {
               const saved = this.settings.savedNoteZooms[filePath];
@@ -92,18 +92,16 @@ export default class OpticalZoomPlugin extends Plugin {
       })
     );
 
-    // Register Command Palette Actions & Hotkeys
+    // Register Command Palette Actions (no default hotkeys to avoid user conflicts)
     this.addCommand({
-      id: 'reset-optical-zoom',
-      name: 'Reset optical zoom to 100%',
-      hotkeys: [{ modifiers: ['Mod'], key: '0' }],
+      id: 'reset-zoom',
+      name: 'Reset zoom to 100%',
       callback: () => this.getActiveController()?.resetZoom(true),
     });
 
     this.addCommand({
-      id: 'optical-zoom-in',
-      name: 'Optical zoom in',
-      hotkeys: [{ modifiers: ['Mod', 'Shift'], key: '=' }],
+      id: 'zoom-in',
+      name: 'Zoom in',
       callback: () => {
         const factor = 1 + this.settings.hotkeyZoomStepPercent / 100;
         this.getActiveController()?.stepZoomByFactor(factor);
@@ -111,9 +109,8 @@ export default class OpticalZoomPlugin extends Plugin {
     });
 
     this.addCommand({
-      id: 'optical-zoom-out',
-      name: 'Optical zoom out',
-      hotkeys: [{ modifiers: ['Mod', 'Shift'], key: '-' }],
+      id: 'zoom-out',
+      name: 'Zoom out',
       callback: () => {
         const factor = 1 + this.settings.hotkeyZoomStepPercent / 100;
         this.getActiveController()?.stepZoomByFactor(1 / factor);
@@ -164,7 +161,7 @@ export default class OpticalZoomPlugin extends Plugin {
                 this.statusIndicator?.update(scale);
               }
               if (this.settings.rememberZoomPerNote) {
-                const filePath = (leaf.view as any)?.file?.path as string | undefined;
+                const filePath = (leaf.view as { file?: { path?: string } | null })?.file?.path;
                 if (filePath) {
                   this.scheduleSaveNoteZoom(filePath, scale);
                 }
@@ -222,7 +219,8 @@ export default class OpticalZoomPlugin extends Plugin {
   }
 
   async loadSettings(): Promise<void> {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    const loaded = (await this.loadData()) as Partial<OpticalZoomSettings> | null;
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
   }
 
   async saveSettings(): Promise<void> {

@@ -77,16 +77,18 @@ You can also install and auto-update via the [BRAT](https://github.com/TfTHacker
 | Open a side drawer while zoomed | Flick inward fast from the very edge of the screen (start within ~12 px of the left or right edge and swipe inward) — slow edge drags pan the page instead |
 | Loupe (desktop) | Hold `Alt` (configurable: `Ctrl`, `Shift`, or disabled) and move the mouse — no click needed |
 | Loupe (mobile) | Long-press (500 ms) with one finger **at 100% zoom** and drag; the lens floats 76 px above your thumb so it never covers what you're reading. While zoomed in, a held finger pans the page instead — the loupe never opens over already-magnified content |
-| Reset to 100% | `Ctrl`/`Cmd` + `0`, click the zoom pill, or two-finger double-tap |
-| Zoom in / out (commands) | `Ctrl`/`Cmd` + `Shift` + `=` / `Ctrl`/`Cmd` + `Shift` + `-` (configurable step %, default 25%), or use the command palette |
+| Reset to 100% | Click the zoom pill, two-finger double-tap, or use the **Reset zoom to 100%** command |
+| Zoom in / out (commands) | Use the **Zoom in** / **Zoom out** commands in the command palette (configurable step %, default 25%) |
 
-Commands available in the palette:
+Commands available in the palette (assign hotkeys in **Settings → Hotkeys**; no defaults are bound to avoid conflicts):
 
-- **Reset optical zoom to 100%**
-- **Optical zoom in**
-- **Optical zoom out**
-- **Toggle magnifying loupe**
-- **Toggle zoom lock**
+| Command | Recommended Hotkey |
+| --- | --- |
+| **Reset zoom to 100%** | `Ctrl`/`Cmd` + `0` |
+| **Zoom in** | `Ctrl`/`Cmd` + `Shift` + `=` |
+| **Zoom out** | `Ctrl`/`Cmd` + `Shift` + `-` |
+| **Toggle magnifying loupe** | *(optional)* |
+| **Toggle zoom lock** | *(optional)* |
 
 ## Settings
 

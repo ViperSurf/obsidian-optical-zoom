@@ -88,9 +88,9 @@ export class CrossPlatformInputRecognizer {
 
     // 3. iOS / macOS WebKit Proprietary GestureEvents (Safari/WKWebView fallback)
     if (IS_APPLE_WEBKIT && 'ongesturestart' in window) {
-      this.container.addEventListener('gesturestart', this.handleGestureStart as EventListener, { passive: false });
-      this.container.addEventListener('gesturechange', this.handleGestureChange as EventListener, { passive: false });
-      this.container.addEventListener('gestureend', this.handleGestureEnd as EventListener, { passive: true });
+      this.container.addEventListener('gesturestart', this.handleGestureStart, { passive: false });
+      this.container.addEventListener('gesturechange', this.handleGestureChange, { passive: false });
+      this.container.addEventListener('gestureend', this.handleGestureEnd, { passive: true });
     }
   }
 
@@ -459,18 +459,20 @@ export class CrossPlatformInputRecognizer {
     }
   };
 
-  private handleGestureStart = (e: any): void => {
+  private handleGestureStart = (e: Event): void => {
     if (this.getSettings().interactionMode === 'loupe-only') return;
     if (this.activePointers.size >= 2) return; // Handled by PointerEvents
     e.preventDefault();
+    const ge = e as Event & { scale?: number };
     this.isWebKitGestureRunning = true;
-    this.lastWebKitGestureScale = e.scale || 1.0;
+    this.lastWebKitGestureScale = ge.scale || 1.0;
   };
 
-  private handleGestureChange = (e: any): void => {
+  private handleGestureChange = (e: Event): void => {
     if (!this.isWebKitGestureRunning) return;
     e.preventDefault();
-    const currentGestureScale = e.scale || 1.0;
+    const ge = e as Event & { scale?: number; clientX?: number; clientY?: number };
+    const currentGestureScale = ge.scale || 1.0;
     const delta = currentGestureScale / this.lastWebKitGestureScale;
     this.lastWebKitGestureScale = currentGestureScale;
 
@@ -478,8 +480,8 @@ export class CrossPlatformInputRecognizer {
       scaleDelta: 1 + (delta - 1) * this.getSettings().zoomSensitivity,
       panDeltaX: 0,
       panDeltaY: 0,
-      focalClientX: e.clientX ?? window.innerWidth / 2,
-      focalClientY: e.clientY ?? window.innerHeight / 2,
+      focalClientX: ge.clientX ?? window.innerWidth / 2,
+      focalClientY: ge.clientY ?? window.innerHeight / 2,
       source: 'webkit-gesture',
     });
   };
@@ -504,9 +506,9 @@ export class CrossPlatformInputRecognizer {
     this.container.removeEventListener('touchcancel', this.handleTouchEndOrCancel);
     this.singleTouchPan = null;
     if (IS_APPLE_WEBKIT && 'ongesturestart' in window) {
-      this.container.removeEventListener('gesturestart', this.handleGestureStart as EventListener);
-      this.container.removeEventListener('gesturechange', this.handleGestureChange as EventListener);
-      this.container.removeEventListener('gestureend', this.handleGestureEnd as EventListener);
+      this.container.removeEventListener('gesturestart', this.handleGestureStart);
+      this.container.removeEventListener('gesturechange', this.handleGestureChange);
+      this.container.removeEventListener('gestureend', this.handleGestureEnd);
     }
     this.activePointers.clear();
   }

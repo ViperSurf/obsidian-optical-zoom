@@ -72,6 +72,10 @@
   transform: none !important;
 }
 
+.oz-zoom-target {
+  transform-origin: 0 0;
+}
+
 /* Desktop Status Bar Pill & Mobile Floating Reset Pill */
 .oz-status-pill {
   cursor: pointer;

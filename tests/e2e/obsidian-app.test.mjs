@@ -132,7 +132,7 @@ describe('Real Obsidian Desktop + Mobile-Emulated Integration E2E', { skip: !HAS
 
   async function resetZoomAndScroll() {
     await page.evaluate(() => {
-      window.app.commands.executeCommandById('optical-zoom:reset-optical-zoom');
+      window.app.commands.executeCommandById('optical-zoom:reset-zoom');
       const vp =
         document.querySelector('.oz-zoom-host .markdown-reading-view:not([style*="display: none"]) .markdown-preview-view') ||
         document.querySelector('.oz-zoom-host .cm-scroller');
@@ -563,14 +563,14 @@ describe('Real Obsidian Desktop + Mobile-Emulated Integration E2E', { skip: !HAS
 
   it('Command step zoom and Alt-hold desktop loupe lens', async () => {
     await page.evaluate(() => {
-      window.app.commands.executeCommandById('optical-zoom:optical-zoom-in');
+      window.app.commands.executeCommandById('optical-zoom:zoom-in');
     });
     await page.waitForTimeout(200);
     const pillAfterIn = await page.evaluate(() => document.querySelector('.oz-status-pill')?.textContent || '');
     assert.ok(pillAfterIn.includes('125%'), `expected 125% after zoom-in command, got "${pillAfterIn}"`);
 
     await page.evaluate(() => {
-      window.app.commands.executeCommandById('optical-zoom:optical-zoom-out');
+      window.app.commands.executeCommandById('optical-zoom:zoom-out');
     });
     await page.waitForTimeout(200);
     assert.equal(
