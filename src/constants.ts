@@ -19,7 +19,7 @@ export const DEFAULT_SETTINGS: OpticalZoomSettings = {
   snapFeedback: true,
   panMomentum: true,
   pinchJitterFilter: true,
-  resetOnEscape: false,
+  resetOnEscape: true,
   showStatusBarZoom: true,
   zoomIndicatorMode: 'always',
   mobileIndicatorPosition: 'bottom-center',

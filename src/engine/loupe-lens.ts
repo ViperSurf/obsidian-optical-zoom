@@ -184,7 +184,7 @@ export class OpticalLoupeController {
     const size = settings.loupeSizePx;
 
     // Build lens container
-    this.lensEl = document.createElement('div');
+    this.lensEl = createEl('div');
     this.lensEl.className =
       settings.loupeShape === 'circle' ? 'oz-loupe-lens oz-loupe-circle' : 'oz-loupe-lens';
     this.lensEl.style.width = `${size}px`;

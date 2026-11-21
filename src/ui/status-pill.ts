@@ -28,7 +28,7 @@ export class ZoomStatusIndicator {
       this.pillEl.addClass('oz-status-pill', 'oz-hidden');
     } else {
       // Lightweight mobile corner pill (only visible when zoomed != 100%)
-      this.pillEl = document.createElement('button');
+      this.pillEl = createEl('button');
       this.pillEl.className = 'oz-mobile-reset-pill oz-hidden';
       document.body.appendChild(this.pillEl);
     }
@@ -36,7 +36,7 @@ export class ZoomStatusIndicator {
     this.applyCornerPosition();
     setTooltip(
       this.pillEl,
-      'Current optical magnification. Click or press Ctrl/Cmd+0 (or 2-finger double-tap) to reset to 100%.'
+      'Current optical magnification. Click, press Esc, or 2-finger double-tap to reset to 100%.'
     );
     this.pillEl.addEventListener('click', (e) => {
       e.preventDefault();

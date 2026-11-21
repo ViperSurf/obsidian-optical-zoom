@@ -2,6 +2,12 @@
 
 All notable changes to **Optical Zoom** are documented in this file.
 
+## [1.5.2] - 2026-11-20
+
+### Changed
+- **Escape key reset enabled by default:** `resetOnEscape` is now `true` by default so pressing `Esc` while zoomed (with no modal or loupe open) resets note zoom back to 100%.
+- **Obsidian Community Directory compliance:** Removed static `.style` assignments in favor of CSS classes / `removeProperty`, switched DOM element creation to `createEl`, removed default command hotkeys (documented recommended bindings in `README.md`), shortened command IDs/names, and tightened TypeScript types.
+
 ## [1.5.1] - 2026-11-20
 
 ### Changed

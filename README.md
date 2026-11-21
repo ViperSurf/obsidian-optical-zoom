@@ -77,7 +77,7 @@ You can also install and auto-update via the [BRAT](https://github.com/TfTHacker
 | Open a side drawer while zoomed | Flick inward fast from the very edge of the screen (start within ~12 px of the left or right edge and swipe inward) — slow edge drags pan the page instead |
 | Loupe (desktop) | Hold `Alt` (configurable: `Ctrl`, `Shift`, or disabled) and move the mouse — no click needed |
 | Loupe (mobile) | Long-press (500 ms) with one finger **at 100% zoom** and drag; the lens floats 76 px above your thumb so it never covers what you're reading. While zoomed in, a held finger pans the page instead — the loupe never opens over already-magnified content |
-| Reset to 100% | Click the zoom pill, two-finger double-tap, or use the **Reset zoom to 100%** command |
+| Reset to 100% | Press `Esc`, click the zoom pill, two-finger double-tap, or use the **Reset zoom to 100%** command |
 | Zoom in / out (commands) | Use the **Zoom in** / **Zoom out** commands in the command palette (configurable step %, default 25%) |
 
 Commands available in the palette (assign hotkeys in **Settings → Hotkeys**; no defaults are bound to avoid conflicts):
@@ -100,7 +100,7 @@ Commands available in the palette (assign hotkeys in **Settings → Hotkeys**; n
 | Hotkey zoom step (%) | 5% – 50% slider | 25% | Step size used by Optical zoom in / out commands and hotkeys. |
 | Pinch jitter stabilization | On / Off | On | Filters tiny finger-distance fluctuations so 2-finger panning stays steady. |
 | Smooth pan momentum | On / Off | On | Adds gentle deceleration after releasing a fast 1-finger pan on touchscreens. |
-| Reset zoom on Escape | On / Off | Off | Pressing Escape while zoomed (with no modal/loupe open) resets to 100%. |
+| Reset zoom on Escape | On / Off | On | Pressing Escape while zoomed (with no modal/loupe open) resets to 100%. |
 | Loupe lens size (px) | 140–400 px slider | 240 px | Diameter of the magnifying glass lens. |
 | Loupe magnification power | 1.25×–4.0× | 2.0× | Optical zoom strength inside the magnifying glass. |
 | Loupe lens shape | Rounded Rectangle / Circle | Rounded Rectangle | Chooses between rounded-square and circular loupe lens. |
@@ -145,7 +145,7 @@ The test suite bundles the real `src/math/affine-focal.ts` and `src/input/gestur
 
 ### Releasing
 
-Tag a version matching `manifest.json`'s `version` **without a `v` prefix** (e.g. `git tag 1.5.1 && git push origin 1.5.1`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required loose by the Obsidian community store / BRAT) plus `optical-zoom.zip`, a ready-to-unzip folder for manual installs.
+Tag a version matching `manifest.json`'s `version` **without a `v` prefix** (e.g. `git tag 1.5.2 && git push origin 1.5.2`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required loose by the Obsidian community store / BRAT) plus `optical-zoom.zip`, a ready-to-unzip folder for manual installs.
 
 ## License
 
