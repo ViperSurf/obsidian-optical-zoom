@@ -184,9 +184,9 @@ export class OpticalLoupeController {
     const size = settings.loupeSizePx;
 
     // Build lens container
-    this.lensEl = createEl('div');
-    this.lensEl.className =
-      settings.loupeShape === 'circle' ? 'oz-loupe-lens oz-loupe-circle' : 'oz-loupe-lens';
+    this.lensEl = document.body.createDiv({
+      cls: settings.loupeShape === 'circle' ? 'oz-loupe-lens oz-loupe-circle' : 'oz-loupe-lens',
+    });
     this.lensEl.style.width = `${size}px`;
     this.lensEl.style.height = `${size}px`;
 
@@ -218,7 +218,6 @@ export class OpticalLoupeController {
 
     this.cloneViewportEl = clonedPane;
     this.lensEl.appendChild(this.cloneViewportEl);
-    document.body.appendChild(this.lensEl);
 
     // Apply the captured scroll position only AFTER the clone is attached:
     // scroll assignments on a detached node are dropped (no layout), which

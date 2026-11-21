@@ -1,28 +1,28 @@
 /* styles.css */
 
 /* Allow 1-finger vertical/horizontal pan while passing 2-finger pinch to our recognizer on Android & iOS */
-.oz-zoom-host .markdown-preview-view,
-.oz-zoom-host .cm-scroller {
-  touch-action: pan-x pan-y !important;
+body .oz-zoom-host .markdown-preview-view,
+body .oz-zoom-host .cm-scroller {
+  touch-action: pan-x pan-y;
 }
 
 /* While optically zoomed, disable browser-native scroll claiming so 1-finger pans in all 4 directions never trigger touchcancel */
-.oz-zoom-host.oz-is-zoomed .markdown-preview-view,
-.oz-zoom-host.oz-is-zoomed .cm-scroller {
-  touch-action: none !important;
-  overscroll-behavior: none !important;
-  scroll-behavior: auto !important;
+body .oz-zoom-host.oz-is-zoomed .markdown-preview-view,
+body .oz-zoom-host.oz-is-zoomed .cm-scroller {
+  touch-action: none;
+  overscroll-behavior: none;
+  scroll-behavior: auto;
 }
 
 /* Promote to GPU layer strictly during active gesture so idle memory is 0% and settled vectors stay razor-sharp */
-.oz-gesturing {
+.oz-zoom-host .oz-gesturing {
   will-change: transform;
   backface-visibility: hidden;
 }
 
 /* Smooth 120ms ease-out when snapping back to 100% */
-.oz-smooth-reset {
-  transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1) !important;
+.oz-zoom-host .oz-smooth-reset {
+  transition: transform 120ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* Optical Loupe Magnifying Glass */
@@ -57,19 +57,19 @@
   animation: oz-snap-pulse-anim 240ms ease-out;
 }
 
-.oz-loupe-clone {
-  position: absolute !important;
-  top: 0 !important;
-  left: 0 !important;
-  margin: 0 !important;
-  pointer-events: none !important;
+body .oz-loupe-lens > .oz-loupe-clone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  margin: 0;
+  pointer-events: none;
   overflow: hidden;
   transform-origin: 0 0;
 }
 
-.oz-loupe-clone .cm-sizer,
-.oz-loupe-clone .markdown-preview-sizer {
-  transform: none !important;
+body .oz-loupe-lens > .oz-loupe-clone .cm-sizer,
+body .oz-loupe-lens > .oz-loupe-clone .markdown-preview-sizer {
+  transform: none;
 }
 
 .oz-zoom-target {
@@ -133,13 +133,15 @@
   left: 16px;
 }
 
-.oz-faded {
-  opacity: 0 !important;
+body .oz-status-pill.oz-faded,
+body .oz-mobile-reset-pill.oz-faded {
+  opacity: 0;
   pointer-events: none;
 }
 
-.oz-hidden {
-  display: none !important;
+body .oz-status-pill.oz-hidden,
+body .oz-mobile-reset-pill.oz-hidden {
+  display: none;
 }
 
 /* Inline (?) Help Badge in Settings */

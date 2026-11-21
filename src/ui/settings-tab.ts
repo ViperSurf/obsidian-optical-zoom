@@ -30,6 +30,10 @@ export class OpticalZoomSettingTab extends PluginSettingTab {
   }
 
   display(): void {
+    this.renderSettings();
+  }
+
+  private renderSettings(): void {
     const { containerEl } = this;
     containerEl.empty();
 
@@ -61,7 +65,6 @@ export class OpticalZoomSettingTab extends PluginSettingTab {
         slider
           .setLimits(0.5, 2.0, 0.1)
           .setValue(this.plugin.settings.zoomSensitivity)
-          .setDynamicTooltip()
           .onChange(async (val) => {
             this.plugin.settings.zoomSensitivity = val;
             await this.plugin.saveSettings();
@@ -101,7 +104,6 @@ export class OpticalZoomSettingTab extends PluginSettingTab {
         slider
           .setLimits(5, 50, 5)
           .setValue(this.plugin.settings.hotkeyZoomStepPercent)
-          .setDynamicTooltip()
           .onChange(async (val) => {
             this.plugin.settings.hotkeyZoomStepPercent = val;
             await this.plugin.saveSettings();
@@ -160,7 +162,7 @@ export class OpticalZoomSettingTab extends PluginSettingTab {
       });
     this.appendHelpBadge(
       escapeSetting.nameEl,
-      'Off by default so Escape keeps its normal editor behavior unless you opt in.'
+      'On by default. Turn off if you want Escape to keep its normal editor behavior while zoomed.'
     );
 
     // 7. Loupe Lens Diameter
@@ -171,7 +173,6 @@ export class OpticalZoomSettingTab extends PluginSettingTab {
         slider
           .setLimits(140, 400, 10)
           .setValue(this.plugin.settings.loupeSizePx)
-          .setDynamicTooltip()
           .onChange(async (val) => {
             this.plugin.settings.loupeSizePx = val;
             await this.plugin.saveSettings();
@@ -309,10 +310,11 @@ export class OpticalZoomSettingTab extends PluginSettingTab {
             if (!this.pendingClearNotesConfirm) {
               this.pendingClearNotesConfirm = true;
               btn.setButtonText('Tap again within 5s to clear');
-              btn.setWarning();
+              btn.buttonEl.addClass('mod-warning');
               this.clearNotesConfirmTimer = window.setTimeout(() => {
                 this.pendingClearNotesConfirm = false;
                 btn.setButtonText('Clear saved zooms');
+                btn.buttonEl.removeClass('mod-warning');
               }, 5000);
               return;
             }
@@ -320,7 +322,7 @@ export class OpticalZoomSettingTab extends PluginSettingTab {
             this.pendingClearNotesConfirm = false;
             this.plugin.settings.savedNoteZooms = {};
             await this.plugin.saveSettings();
-            this.display();
+            this.renderSettings();
           });
       });
     this.appendHelpBadge(
@@ -412,10 +414,11 @@ export class OpticalZoomSettingTab extends PluginSettingTab {
           if (!this.pendingResetConfirm) {
             this.pendingResetConfirm = true;
             btn.setButtonText('Tap again within 5s to confirm reset');
-            btn.setWarning();
+            btn.buttonEl.addClass('mod-warning');
             this.resetConfirmTimer = window.setTimeout(() => {
               this.pendingResetConfirm = false;
               btn.setButtonText('Reset defaults');
+              btn.buttonEl.removeClass('mod-warning');
             }, 5000);
             return;
           }
@@ -423,7 +426,7 @@ export class OpticalZoomSettingTab extends PluginSettingTab {
           this.pendingResetConfirm = false;
           this.plugin.settings = { ...DEFAULT_SETTINGS };
           await this.plugin.saveSettings();
-          this.display();
+          this.renderSettings();
         });
       });
     this.appendHelpBadge(

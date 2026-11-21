@@ -145,7 +145,7 @@ The test suite bundles the real `src/math/affine-focal.ts` and `src/input/gestur
 
 ### Releasing
 
-Tag a version matching `manifest.json`'s `version` **without a `v` prefix** (e.g. `git tag 1.5.2 && git push origin 1.5.2`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required loose by the Obsidian community store / BRAT) plus `optical-zoom.zip`, a ready-to-unzip folder for manual installs.
+Tag a version matching `manifest.json`'s `version` **without a `v` prefix** (e.g. `git tag 1.5.3 && git push origin 1.5.3`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required loose by the Obsidian community store / BRAT) plus `optical-zoom.zip`, a ready-to-unzip folder for manual installs.
 
 ## License
 

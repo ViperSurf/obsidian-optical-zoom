@@ -2,6 +2,11 @@
 
 All notable changes to **Optical Zoom** are documented in this file.
 
+## [1.5.3] - 2026-11-20
+
+### Changed
+- **CSS & Review Scorecard cleanup:** Replaced all `!important` CSS rules in `styles.css` with higher-specificity selectors, replaced `builtin-modules` with Node's built-in `node:module` in `esbuild.config.mjs`, switched loupe lens creation to `document.body.createDiv()`, removed deprecated `setDynamicTooltip()`, `setWarning()`, and direct `this.display()` re-render calls in `src/ui/settings-tab.ts`, and added `CONTRIBUTING.md`.
+
 ## [1.5.2] - 2026-11-20
 
 ### Changed
