@@ -21,9 +21,9 @@ Works on **Windows, Linux, macOS, Android, and iOS/iPadOS** (`isDesktopOnly: fal
 | --- | --- |
 | ![Desktop Optical Zoom](assets/desktop-zoom.webp) | ![Hold-to-Loupe Magnifier](assets/loupe-magnifier.webp) |
 
-| Mobile Touch Zoom | Settings (General & Loupe) | Settings (Triggers & Indicator) |
-| --- | --- | --- |
-| ![Mobile Touch Zoom](assets/mobile-zoom.webp) | ![Settings Tab](assets/settings-tab.webp) | ![Settings Tab (More)](assets/settings-tab-2.webp) |
+| Mobile Touch Zoom | Mobile Long-Press Loupe | Settings (General & Loupe) | Settings (Triggers & Indicator) |
+| --- | --- | --- | --- |
+| ![Mobile Touch Zoom](assets/mobile-zoom.webp) | ![Mobile Touch Loupe](assets/mobile-loupe.webp) | ![Settings Tab](assets/settings-tab.webp) | ![Settings Tab (More)](assets/settings-tab-2.webp) |
 
 ## Features
 
@@ -145,7 +145,7 @@ The test suite bundles the real `src/math/affine-focal.ts` and `src/input/gestur
 
 ### Releasing
 
-Tag a version matching `manifest.json`'s `version` **without a `v` prefix** (e.g. `git tag 1.5.3 && git push origin 1.5.3`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required loose by the Obsidian community store / BRAT) plus `optical-zoom.zip`, a ready-to-unzip folder for manual installs.
+Tag a version matching `manifest.json`'s `version` **without a `v` prefix** (e.g. `git tag 1.5.4 && git push origin 1.5.4`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required by the Obsidian community store / BRAT).
 
 ## License
 

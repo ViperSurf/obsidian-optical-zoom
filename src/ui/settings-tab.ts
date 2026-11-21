@@ -1,5 +1,5 @@
 // src/ui/settings-tab.ts
-import { App, PluginSettingTab, Setting, setTooltip } from 'obsidian';
+import { App, PluginSettingTab, Setting, setTooltip, type SettingDefinitionItem } from 'obsidian';
 import type OpticalZoomPlugin from '../main';
 import { DEFAULT_SETTINGS } from '../constants';
 import type {
@@ -31,6 +31,203 @@ export class OpticalZoomSettingTab extends PluginSettingTab {
 
   display(): void {
     this.renderSettings();
+  }
+
+  getControlValue(key: string): unknown {
+    const val = this.plugin.settings[key as keyof typeof DEFAULT_SETTINGS];
+    if (key === 'maxZoomScale' || key === 'loupeMagnification') {
+      return String(val);
+    }
+    return val;
+  }
+
+  async setControlValue(key: string, value: unknown): Promise<void> {
+    if (key === 'maxZoomScale') {
+      this.plugin.settings.maxZoomScale = Number(value);
+    } else if (key === 'loupeMagnification') {
+      this.plugin.settings.loupeMagnification = Number(value) as LoupeMagnificationPreset;
+    } else {
+      (this.plugin.settings as unknown as Record<string, unknown>)[key] = value;
+    }
+    await this.plugin.saveSettings();
+  }
+
+  getSettingDefinitions(): SettingDefinitionItem[] {
+    const savedCount = Object.keys(this.plugin.settings.savedNoteZooms || {}).length;
+    return [
+      {
+        name: 'Zoom interaction mode',
+        desc: 'Choose how optical magnification is triggered inside notes.',
+        control: {
+          type: 'dropdown',
+          key: 'interactionMode',
+          options: {
+            both: 'Pinch-to-Zoom + Hold-to-Loupe (Both)',
+            'pinch-only': 'Pinch-to-Zoom only',
+            'loupe-only': 'Hold-to-Loupe only',
+          },
+        },
+      },
+      {
+        name: 'Zoom speed',
+        desc: 'Adjust trackpad and touch pinch velocity.',
+        control: { type: 'slider', key: 'zoomSensitivity', min: 0.5, max: 2.0, step: 0.1 },
+      },
+      {
+        name: 'Maximum magnification',
+        desc: 'Set the upper zoom limit.',
+        control: {
+          type: 'dropdown',
+          key: 'maxZoomScale',
+          options: {
+            '2': 'Max 200%',
+            '3': 'Max 300% (Default)',
+            '4': 'Max 400%',
+            '5': 'Max 500%',
+          },
+        },
+      },
+      {
+        name: 'Hotkey zoom step (%)',
+        desc: 'Step size used by the Zoom in / out commands and hotkeys.',
+        control: { type: 'slider', key: 'hotkeyZoomStepPercent', min: 5, max: 50, step: 5 },
+      },
+      {
+        name: 'Pinch jitter stabilization',
+        desc: 'Filter out tiny finger-distance fluctuations so 2-finger panning stays steady.',
+        control: { type: 'toggle', key: 'pinchJitterFilter' },
+      },
+      {
+        name: 'Smooth pan momentum',
+        desc: 'Add gentle deceleration after releasing a fast 1-finger pan on touchscreens.',
+        control: { type: 'toggle', key: 'panMomentum' },
+      },
+      {
+        name: 'Reset zoom on Escape',
+        desc: 'Press Escape while zoomed (with no modal or loupe open) to return to 100%.',
+        control: { type: 'toggle', key: 'resetOnEscape' },
+      },
+      {
+        name: 'Loupe lens size (px)',
+        desc: 'Diameter of the magnifying glass lens (140–400 px).',
+        control: { type: 'slider', key: 'loupeSizePx', min: 140, max: 400, step: 10 },
+      },
+      {
+        name: 'Loupe magnification power',
+        desc: 'Optical zoom strength inside the magnifying glass.',
+        control: {
+          type: 'dropdown',
+          key: 'loupeMagnification',
+          options: {
+            '1.25': '1.25x Zoom',
+            '1.5': '1.5x Zoom',
+            '2': '2.0x Zoom (Default)',
+            '2.5': '2.5x Zoom',
+            '3': '3.0x Zoom',
+            '4': '4.0x Zoom',
+          },
+        },
+      },
+      {
+        name: 'Loupe lens shape',
+        desc: 'Choose between a rounded rectangle or circular magnifying glass.',
+        control: {
+          type: 'dropdown',
+          key: 'loupeShape',
+          options: {
+            rounded: 'Rounded Rectangle (Default)',
+            circle: 'Circle',
+          },
+        },
+      },
+      {
+        name: 'Desktop loupe trigger',
+        desc: 'Modifier key held on desktop to summon the loupe (or use the Toggle magnifying loupe command).',
+        control: {
+          type: 'dropdown',
+          key: 'desktopLoupeKey',
+          options: {
+            Alt: 'Hold Alt / Option',
+            Control: 'Hold Ctrl / Cmd',
+            Shift: 'Hold Shift',
+            none: 'Disabled (Hotkey / Command only)',
+          },
+        },
+      },
+      {
+        name: 'Mobile touch loupe',
+        desc: 'Long-press (500 ms) with 1 finger at 100% zoom and drag (lens floats above your finger).',
+        control: { type: 'toggle', key: 'mobileTouchLoupe' },
+      },
+      {
+        name: 'Remember zoom per tab',
+        desc: "Keep each open tab's zoom level when switching between notes.",
+        control: { type: 'toggle', key: 'rememberZoomPerTab' },
+      },
+      {
+        name: 'Remember zoom per note',
+        desc: "Save and restore each note's zoom level across sessions.",
+        control: { type: 'toggle', key: 'rememberZoomPerNote' },
+      },
+      {
+        name: 'Clear saved note zooms',
+        desc: `Remove stored per-note zoom levels (${savedCount} saved).`,
+        disabled: () => Object.keys(this.plugin.settings.savedNoteZooms || {}).length === 0,
+        action: async () => {
+          this.plugin.settings.savedNoteZooms = {};
+          await this.plugin.saveSettings();
+          this.update();
+        },
+      },
+      {
+        name: '100% snap feedback',
+        desc: 'Subtle visual pulse (and light vibration on mobile) when snapping to 100%.',
+        control: { type: 'toggle', key: 'snapFeedback' },
+      },
+      {
+        name: 'Show zoom in status bar',
+        desc: 'Display the zoom percentage pill in the desktop status bar when zoomed.',
+        control: { type: 'toggle', key: 'showStatusBarZoom' },
+      },
+      {
+        name: 'Zoom indicator visibility',
+        desc: 'Choose whether the zoom pill stays visible, fades out, or stays hidden.',
+        control: {
+          type: 'dropdown',
+          key: 'zoomIndicatorMode',
+          options: {
+            always: 'Always visible when zoomed',
+            'auto-fade': 'Auto-fade after zooming',
+            hidden: 'Hidden',
+          },
+        },
+      },
+      {
+        name: 'Mobile indicator position',
+        desc: 'Choose where the floating zoom reset pill appears on mobile.',
+        control: {
+          type: 'dropdown',
+          key: 'mobileIndicatorPosition',
+          options: {
+            'bottom-center': 'Bottom Center (Default)',
+            'bottom-right': 'Bottom Right',
+            'bottom-left': 'Bottom Left',
+            'top-center': 'Top Center',
+            'top-right': 'Top Right',
+            'top-left': 'Top Left',
+          },
+        },
+      },
+      {
+        name: 'Restore default settings',
+        desc: 'Reset all settings back to factory defaults.',
+        action: async () => {
+          this.plugin.settings = { ...DEFAULT_SETTINGS };
+          await this.plugin.saveSettings();
+          this.update();
+        },
+      },
+    ];
   }
 
   private renderSettings(): void {

@@ -2,6 +2,13 @@
 
 All notable changes to **Optical Zoom** are documented in this file.
 
+## [1.5.4] - 2026-11-20
+
+### Added
+- **Declarative settings (`getSettingDefinitions`):** Added Obsidian `1.13.0+` `getSettingDefinitions()` alongside `display()` so settings appear in Obsidian's Settings Search while keeping full compatibility down to `1.5.0`.
+- **GitHub build provenance attestations:** Updated `.github/workflows/release.yml` with `actions/attest-build-provenance@v2` and attached only `main.js`, `manifest.json`, and `styles.css` to releases.
+- **Mobile loupe showcase screenshot:** Added `assets/mobile-loupe.webp` demonstrating the floating mobile touch loupe.
+
 ## [1.5.3] - 2026-11-20
 
 ### Changed
