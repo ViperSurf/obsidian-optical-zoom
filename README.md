@@ -145,7 +145,7 @@ The test suite bundles the real `src/math/affine-focal.ts` and `src/input/gestur
 
 ### Releasing
 
-Tag a version matching `manifest.json`'s `version` **without a `v` prefix** (e.g. `git tag 1.5.4 && git push origin 1.5.4`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required by the Obsidian community store / BRAT).
+Tag a version matching `manifest.json`'s `version` **without a `v` prefix** (e.g. `git tag 1.5.5 && git push origin 1.5.5`) — the release workflow builds the plugin and attaches `main.js`, `manifest.json`, and `styles.css` (required by the Obsidian community store / BRAT).
 
 ## License
 

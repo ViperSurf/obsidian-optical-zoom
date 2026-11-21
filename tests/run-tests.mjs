@@ -55,6 +55,7 @@ const result = spawnSync(
     path.join(here, 'affine-focal.test.mjs'),
     path.join(here, 'gesture-guards.test.mjs'),
     path.join(here, 'pane-controller.test.mjs'),
+    path.join(here, 'release-compliance.test.mjs'),
   ],
   { stdio: 'inherit' }
 );

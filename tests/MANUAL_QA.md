@@ -18,4 +18,15 @@ Run this checklist before tagging a release (`main.js`, `manifest.json`, `styles
 ## 3. Loupe & Reset Controls
 - [ ] **Desktop Loupe:** Hold `Alt` (or configured key) at 100% and move cursor—single sharp lens, disappears immediately on key release.
 - [ ] **Mobile Loupe:** Long-press (500 ms) at 100% opens lens 76 px above thumb; never opens while zoomed (`> 100%`).
-- [ ] **Reset:** `Ctrl`/`Cmd`+`0`, status pill click, and 2-finger double-tap all snap cleanly to 100% and hide the zoom pill.
+- [ ] **Reset:** `Esc` (default on, when no modal/loupe is open), status pill click, 2-finger double-tap, and the **Reset zoom to 100%** command all snap cleanly to 100% and hide the zoom pill.
+
+## 4. Settings & Pre-Release Gate
+- [ ] **Settings UI & Search:** Open **Settings → Optical Zoom** and verify all controls render and persist; on Obsidian `1.13.0+`, verify settings appear in Settings Search.
+- [ ] **Automated Checks (must all pass before pushing):**
+  - `npm run lint` (`0` errors, `0` warnings)
+  - `npm run typecheck`
+  - `npm test` (unit, controller, and release-compliance regression tests)
+  - `npm run test:e2e` (headless Playwright E2E)
+  - `npm run test:obsidian` (real Obsidian desktop + mobile-emulated E2E)
+  - `npm run build`
+- [ ] **Portal Pre-Check:** Push to `main` and click **Review branch** on `https://community.obsidian.md/account/plugins/optical-zoom` **before** creating a Git tag.

@@ -2,6 +2,11 @@
 
 All notable changes to **Optical Zoom** are documented in this file.
 
+## [1.5.5] - 2026-11-20
+
+### Changed
+- **Automated Obsidian review linting & `minAppVersion` alignment:** Added `eslint` + `eslint-plugin-obsidianmd` (`npm run lint`) locally and in `.github/workflows/ci.yml`, fixed async-void `action` callbacks in `src/ui/settings-tab.ts`, and updated `minAppVersion` to `1.13.0` for `getSettingDefinitions()` support.
+
 ## [1.5.4] - 2026-11-20
 
 ### Added
